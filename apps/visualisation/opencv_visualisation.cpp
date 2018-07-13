@@ -31,12 +31,15 @@ Mat convertFlow(const Mat & flow)
 }
 void flowShow(const Mat &flow, const Mat &refflow, const Mat &mask, int waitTime)
 {
-    printf("---> ready\n"); 
     if (waitTime)
     {
-        imshow("flow", convertFlow(flow));
-        imshow("flow_masked", convertFlow(flow.clone().setTo(Scalar(0, 0), 255 - mask)));
-        imshow("ref", convertFlow(refflow));
+        Mat showImg(flow.rows*3, flow.cols, flow.type());
+        flow.copyTo(showImg(Rect(0, 0, flow.cols, flow.rows)));
+        showImg(Rect(0, 0, flow.cols, flow.rows)).setTo(Scalar(0, 0), 255 - mask);
+        showImg(Rect(0, 0, flow.cols, flow.rows)).copyTo(showImg(Rect(0, 2 * flow.rows, flow.cols, flow.rows)));
+        refflow.copyTo(showImg(Rect(0, flow.rows, flow.cols, flow.rows)));
+        showImg(Rect(0, 2 * flow.rows, flow.cols, flow.rows)) -= refflow;
+        imshow("error", convertFlow(showImg));
         waitKey(waitTime);
     }
 }
@@ -80,14 +83,15 @@ bool getSample(int im_id, Mat& img1, Mat& img2, Mat& flwn, Mat& flwo, Mat& flwn_
 
 
 
-vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
+pair<String, vector<double>> getFlow(int method, Mat img1, Mat img2, Mat& flw)
 {
+    String metname;
     int64 times[4];
     flw = Mat(img1.size(), CV_32FC2);
     switch (method)
     {
-    case 0://sparsetodenseflow
-        printf("Check sparsetodenseflow\n");
+    case 0:
+        metname = "sparsetodenseflow";
         {
             times[0] = times[1] = getTickCount();
             Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_SparseToDense();
@@ -96,8 +100,8 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 1://farneback
-        printf("Check farneback\n");
+    case 1:
+        metname = "farneback";
         {
             times[0] = getTickCount();
             if (img1.channels() == 3)
@@ -112,8 +116,8 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 2://simpleflow
-        printf("Check simpleflow\n");
+    case 2:
+        metname = "simpleflow";
         {
             times[0] = getTickCount();
             //if (img1.channels() == 1)
@@ -128,8 +132,8 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 3://pcaflow
-        printf("Check pcaflow\n");
+    case 3:
+        metname = "pcaflow";
         {
             times[0] = times[1] = getTickCount();
             Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_PCAFlow();
@@ -138,8 +142,8 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 4://deepflow
-        printf("Check deepflow\n");
+    case 4:
+        metname = "deepflow";
         {
             times[0] = getTickCount();
             if (img1.channels() == 3)
@@ -154,8 +158,8 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 5://DISflow_ultrafast
-        printf("Check DISflow_ultrafast\n");
+    case 5:
+        metname = "DISflow_ultrafast";
         {
             times[0] = getTickCount();
             if (img1.channels() == 3)
@@ -170,8 +174,8 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 6://DISflow_fast
-        printf("Check DISflow_fast\n");
+    case 6:
+        metname = "DISflow_fast";
         {
             times[0] = getTickCount();
             if (img1.channels() == 3)
@@ -180,14 +184,25 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
                 cvtColor(img2, img2, COLOR_BGR2GRAY);
             }
             times[1] = getTickCount();
-            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_DIS(optflow::DISOpticalFlow::PRESET_FAST);
+            Ptr<optflow::DISOpticalFlow> DIS = optflow::createOptFlow_DIS(optflow::DISOpticalFlow::PRESET_FAST);
+            DIS->setFinestScale(2);
+            DIS->setGradientDescentIterations(16);
+            DIS->setPatchSize(8);
+            DIS->setPatchStride(4);
+            DIS->setUseMeanNormalization(true);
+            DIS->setUseSpatialPropagation(true);
+            DIS->setVariationalRefinementIterations(5);
+            DIS->setVariationalRefinementAlpha(20.f);
+            DIS->setVariationalRefinementDelta(5.f);
+            DIS->setVariationalRefinementGamma(10.f);
+            Ptr<DenseOpticalFlow> algorithm = DIS;
             times[2] = getTickCount();
             algorithm->calc(img1, img2, flw);
             times[3] = getTickCount();
         }
         break;
-    case 7://DISflow_medium
-        printf("Check DISflow_medium\n");
+    case 7:
+        metname = "DISflow_medium";
         {
             times[0] = getTickCount();
             if (img1.channels() == 3)
@@ -203,14 +218,123 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
         }
         break;
 
+    case 8:
+        metname = "DISflow_05";
+        {
+            times[0] = getTickCount();
+            if (img1.channels() == 3)
+            {
+                cvtColor(img1, img1, COLOR_BGR2GRAY);
+                cvtColor(img2, img2, COLOR_BGR2GRAY);
+            }
+            times[1] = getTickCount();
+            Ptr<optflow::DISOpticalFlow> DIS = optflow::createOptFlow_DIS(optflow::DISOpticalFlow::PRESET_FAST);
+            DIS->setFinestScale(0);
+            DIS->setGradientDescentIterations(256);
+            DIS->setPatchSize(12);
+            DIS->setPatchStride(9);
+            DIS->setUseMeanNormalization(true);
+            DIS->setUseSpatialPropagation(true);
+            DIS->setVariationalRefinementIterations(5);
+            DIS->setVariationalRefinementAlpha(10.f);
+            DIS->setVariationalRefinementDelta(5.f);
+            DIS->setVariationalRefinementGamma(10.f);
+            Ptr<DenseOpticalFlow> algorithm = DIS;
+            times[2] = getTickCount();
+            algorithm->calc(img1, img2, flw);
+            times[3] = getTickCount();
+        }
+        break;
+    case 9:
+        metname = "DISflow_10";
+        {
+            times[0] = getTickCount();
+            if (img1.channels() == 3)
+            {
+                cvtColor(img1, img1, COLOR_BGR2GRAY);
+                cvtColor(img2, img2, COLOR_BGR2GRAY);
+            }
+            times[1] = getTickCount();
+            Ptr<optflow::DISOpticalFlow> DIS = optflow::createOptFlow_DIS(optflow::DISOpticalFlow::PRESET_FAST);
+            DIS->setFinestScale(1);
+            DIS->setGradientDescentIterations(16);
+            DIS->setPatchSize(12);
+            DIS->setPatchStride(9);
+            DIS->setUseMeanNormalization(true);
+            DIS->setUseSpatialPropagation(true);
+            DIS->setVariationalRefinementIterations(5);
+            DIS->setVariationalRefinementAlpha(10.f);
+            DIS->setVariationalRefinementDelta(5.f);
+            DIS->setVariationalRefinementGamma(10.f);
+            Ptr<DenseOpticalFlow> algorithm = DIS;
+            times[2] = getTickCount();
+            algorithm->calc(img1, img2, flw);
+            times[3] = getTickCount();
+        }
+        break;
+    case 10:
+        metname = "DISflow_300";
+        {
+            times[0] = getTickCount();
+            if (img1.channels() == 3)
+            {
+                cvtColor(img1, img1, COLOR_BGR2GRAY);
+                cvtColor(img2, img2, COLOR_BGR2GRAY);
+            }
+            times[1] = getTickCount();
+            Ptr<optflow::DISOpticalFlow> DIS = optflow::createOptFlow_DIS(optflow::DISOpticalFlow::PRESET_FAST);
+            DIS->setFinestScale(3);
+            DIS->setGradientDescentIterations(12);
+            DIS->setPatchSize(8);
+            DIS->setPatchStride(4);
+            DIS->setUseMeanNormalization(true);
+            DIS->setUseSpatialPropagation(true);
+            DIS->setVariationalRefinementIterations(5);
+            DIS->setVariationalRefinementAlpha(10.f);
+            DIS->setVariationalRefinementDelta(5.f);
+            DIS->setVariationalRefinementGamma(10.f);
+            Ptr<DenseOpticalFlow> algorithm = DIS;
+            times[2] = getTickCount();
+            algorithm->calc(img1, img2, flw);
+            times[3] = getTickCount();
+        }
+        break;
+    case 11:
+        metname = "DISflow_600";
+        {
+            times[0] = getTickCount();
+            if (img1.channels() == 3)
+            {
+                cvtColor(img1, img1, COLOR_BGR2GRAY);
+                cvtColor(img2, img2, COLOR_BGR2GRAY);
+            }
+            times[1] = getTickCount();
+            Ptr<optflow::DISOpticalFlow> DIS = optflow::createOptFlow_DIS(optflow::DISOpticalFlow::PRESET_FAST);
+            DIS->setFinestScale(3);
+            DIS->setGradientDescentIterations(16);
+            DIS->setPatchSize(8);
+            DIS->setPatchStride(3);
+            DIS->setUseMeanNormalization(true);
+            DIS->setUseSpatialPropagation(true);
+            DIS->setVariationalRefinementIterations(5);
+            DIS->setVariationalRefinementAlpha(10.f);
+            DIS->setVariationalRefinementDelta(5.f);
+            DIS->setVariationalRefinementGamma(10.f);
+            Ptr<DenseOpticalFlow> algorithm = DIS;
+            times[2] = getTickCount();
+            algorithm->calc(img1, img2, flw);
+            times[3] = getTickCount();
+        }
+        break;
+
     default:
-        return vector<double>();
+        return pair< String, vector<double> >(String(), vector<double>());
     }
     vector<double> vtime;
     vtime.push_back((times[1] - times[0]) * 1000. / getTickFrequency());
     vtime.push_back((times[2] - times[1]) * 1000. / getTickFrequency());
     vtime.push_back((times[3] - times[2]) * 1000. / getTickFrequency());
-    return vtime;
+    return pair< String, vector<double> >(metname, vtime);
 }
 
 vector<double> evalFlow(const Mat &flw, const Mat &refflw, const Mat &mask)
@@ -271,6 +395,7 @@ int main(int, char**)
 {
     vector< vector<double> > time(FLOW_COUNT, vector<double>(3, 0));
     vector<int> processedSamples(FLOW_COUNT, 0);
+    vector< String > names(FLOW_COUNT);
     vector< vector<double> > normO(FLOW_COUNT, vector<double>(11, 0));
     vector< vector<double> > normN(FLOW_COUNT, vector<double>(11, 0));
     for (int im_id = 0; im_id < SAMPLE_COUNT; im_id++)
@@ -281,12 +406,16 @@ int main(int, char**)
         for (int flow_id = 0; flow_id < FLOW_COUNT; flow_id++)
         {
             Mat flw;
-            vector<double> frameTimes = getFlow(flow_id, img1.clone(), img2.clone(), flw);
-            if (frameTimes.empty())
+            printf("Checking...\n");
+            pair< String, vector<double> > flowEv = getFlow(flow_id, img1.clone(), img2.clone(), flw);
+            printf("Evaluated %s\n", flowEv.first.c_str());
+            if (flowEv.second.empty())
                 continue;
-            time[flow_id][0] += frameTimes[0];
-            time[flow_id][1] += frameTimes[1];
-            time[flow_id][2] += frameTimes[2];
+            if (names[flow_id].empty())
+                names[flow_id] = flowEv.first;
+            time[flow_id][0] += flowEv.second[0];
+            time[flow_id][1] += flowEv.second[1];
+            time[flow_id][2] += flowEv.second[2];
             processedSamples[flow_id]++;
             flowShow(flw, flwo, flwo_mask, 0);
             evalAcc(normO[flow_id], evalFlow(flw, flwo, flwo_mask));
@@ -318,7 +447,7 @@ int main(int, char**)
             normN[flow_id][ 9] /= processedSamples[flow_id];
             normN[flow_id][10] /= processedSamples[flow_id];
             printf("%d;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;\n",
-                   flow_id, time[flow_id][0], time[flow_id][1], time[flow_id][2],
+                   names[flow_id], time[flow_id][0], time[flow_id][1], time[flow_id][2],
                    normO[flow_id][0], normO[flow_id][1], normO[flow_id][2], normO[flow_id][3], normO[flow_id][4], normO[flow_id][5], normO[flow_id][6], normO[flow_id][7], normO[flow_id][8], normO[flow_id][9], normO[flow_id][10],
                    normN[flow_id][0], normN[flow_id][1], normN[flow_id][2], normN[flow_id][3], normN[flow_id][4], normN[flow_id][5], normN[flow_id][6], normN[flow_id][7], normN[flow_id][8], normN[flow_id][9], normN[flow_id][10]);
         }
