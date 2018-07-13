@@ -86,17 +86,11 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
     flw = Mat(img1.size(), CV_32FC2);
     switch (method)
     {
-    case 0://simpleflow
-        printf("Check simpleflow\n");
+    case 0://sparsetodenseflow
+        printf("Check sparsetodenseflow\n");
         {
-            times[0] = getTickCount();
-            //if (img1.channels() == 1)
-            //{
-            //    cvtColor(img1, img1, COLOR_GRAY2BGR);
-            //    cvtColor(img2, img2, COLOR_GRAY2BGR);
-            //}
-            times[1] = getTickCount();
-            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_SimpleFlow();
+            times[0] = times[1] = getTickCount();
+            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_SparseToDense();
             times[2] = getTickCount();
             algorithm->calc(img1, img2, flw);
             times[3] = getTickCount();
@@ -118,23 +112,33 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 2://tvl1
-        printf("Check tvl1\n");
+    case 2://simpleflow
+        printf("Check simpleflow\n");
         {
             times[0] = getTickCount();
-            if (img1.channels() == 3)
-            {
-                cvtColor(img1, img1, COLOR_BGR2GRAY);
-                cvtColor(img2, img2, COLOR_BGR2GRAY);
-            }
+            //if (img1.channels() == 1)
+            //{
+            //    cvtColor(img1, img1, COLOR_GRAY2BGR);
+            //    cvtColor(img2, img2, COLOR_GRAY2BGR);
+            //}
             times[1] = getTickCount();
-            Ptr<DenseOpticalFlow> algorithm = createOptFlow_DualTVL1();
+            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_SimpleFlow();
             times[2] = getTickCount();
             algorithm->calc(img1, img2, flw);
             times[3] = getTickCount();
         }
         break;
-    case 3://deepflow
+    case 3://pcaflow
+        printf("Check pcaflow\n");
+        {
+            times[0] = times[1] = getTickCount();
+            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_PCAFlow();
+            times[2] = getTickCount();
+            algorithm->calc(img1, img2, flw);
+            times[3] = getTickCount();
+        }
+        break;
+    case 4://deepflow
         printf("Check deepflow\n");
         {
             times[0] = getTickCount();
@@ -150,7 +154,7 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 4://DISflow_ultrafast
+    case 5://DISflow_ultrafast
         printf("Check DISflow_ultrafast\n");
         {
             times[0] = getTickCount();
@@ -166,7 +170,7 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 5://DISflow_fast
+    case 6://DISflow_fast
         printf("Check DISflow_fast\n");
         {
             times[0] = getTickCount();
@@ -182,7 +186,7 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 6://DISflow_medium
+    case 7://DISflow_medium
         printf("Check DISflow_medium\n");
         {
             times[0] = getTickCount();
@@ -198,63 +202,7 @@ vector<double> getFlow(int method, Mat img1, Mat img2, Mat& flw)
             times[3] = getTickCount();
         }
         break;
-    case 7://sparsetodenseflow
-        printf("Check sparsetodenseflow\n");
-        {
-            times[0] = times[1] = getTickCount();
-            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_SparseToDense();
-            times[2] = getTickCount();
-            algorithm->calc(img1, img2, flw);
-            times[3] = getTickCount();
-        }
-        break;
-    case 8://pcaflow
-        printf("Check pcaflow\n");
-        {
-            times[0] = times[1] = getTickCount();
-            Ptr<DenseOpticalFlow> algorithm = optflow::createOptFlow_PCAFlow();
-            times[2] = getTickCount();
-            algorithm->calc(img1, img2, flw);
-            times[3] = getTickCount();
-        }
-        break;
 
-    case 9://variationalRefinement
-        printf("Check variationalRefinement\n");
-        {
-            times[0] = getTickCount();
-            if (img1.channels() == 3)
-            {
-                cvtColor(img1, img1, COLOR_BGR2GRAY);
-                cvtColor(img2, img2, COLOR_BGR2GRAY);
-            }
-            times[1] = getTickCount();
-            Ptr<DenseOpticalFlow> algorithm = optflow::createVariationalFlowRefinement();
-            times[2] = getTickCount();
-            algorithm->calc(img1, img2, flw);
-            times[3] = getTickCount();
-        }
-        break;
-
-    case 10://LKPyrSparse
-        printf("Check LKPyrSparse\n");
-        {
-            times[0] = getTickCount();
-            vector<Point2f> prevPts, nextPts;
-            vector<unsigned char> status;
-            prevPts.reserve(img1.total());
-            for (int j = 0; j < img1.rows; j++)
-                for (int i = 0; i < img1.cols; i++)
-                    prevPts.push_back(Point(i, j));
-            times[1] = getTickCount();
-            Ptr<SparseOpticalFlow> algorithm = SparsePyrLKOpticalFlow::create();
-            times[2] = getTickCount();
-            algorithm->calc(img1, img2, prevPts, nextPts, status);
-            for (size_t i = 0; i < prevPts.size(); i++)
-                flw.at<Point2f>(prevPts[i]) = status[i] ? nextPts[i] - prevPts[i] : Point2f();
-            times[3] = getTickCount();
-        }
-        break;
     default:
         return vector<double>();
     }
