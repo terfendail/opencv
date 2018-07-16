@@ -96,6 +96,8 @@ pair< String, vector<double> > getDISFlow(int method, Mat img1, Mat img2, Mat& f
     float refalfa[] = { 20.f, 10.f, 5.f, 1.f };
     float refgama[] = { 20.f, 10.f, 5.f, 1.f };
     float refdelt[] = { 20.f, 10.f, 5.f, 1.f };
+    bool mnorm[] = { true, false };
+    bool sprop[] = { true, false };
 
     int fscale_id = method % (sizeof(fscale) / sizeof(fscale[0]) );
     method /= sizeof(fscale) / sizeof(fscale[0]);
@@ -472,7 +474,7 @@ int main(int, char**)
         Mat img1, img2, flwn, flwo, flwn_mask, flwo_mask;
         if (!getSample(im_id, img1, img2, flwn, flwo, flwn_mask, flwo_mask))
             continue;
-        for (int flow_id = 0; true; flow_id++)
+        for (size_t flow_id = 0; true; flow_id++)
         {
             Mat flw;
             pair< String, vector<double> > flowEv = getDISFlow(flow_id, img1.clone(), img2.clone(), flw);
@@ -502,7 +504,7 @@ int main(int, char**)
             evalAcc(normN[flow_id], evalFlow(flw, flwn, flwn_mask));
         }
         printf("flowid;time1;time2;time3;normO1;normO2;normO3;normO4;normO5;normO6;normO7;normO8;normO9;normO10;normO11;normN1;normN2;normN3;normN4;normN5;normN6;normN7;normN8;normN9;normN10;normN11;\n");
-        for (int flow_id = 0; flow_id < time.size(); flow_id++)
+        for (size_t flow_id = 0; flow_id < time.size(); flow_id++)
         {
             double time0 = time[flow_id][0] / processedSamples[flow_id];
             double time1 = time[flow_id][1] / processedSamples[flow_id];
