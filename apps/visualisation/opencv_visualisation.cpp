@@ -111,10 +111,10 @@ pair< String, vector<double> > getDISFlow(int method, Mat img1, Mat img2, Mat& f
     method /= sizeof(refgama) / sizeof(refgama[0]);
     int refdelt_id = method % (sizeof(refdelt) / sizeof(refdelt[0]));
     method /= sizeof(refdelt) / sizeof(refdelt[0]);
-    int meannorm = method % 2;
-    method /= 2;
-    int spatprop = method % 2;
-    method /= 2;
+    bool meannorm = mnorm[method % sizeof(mnorm) / sizeof(mnorm[0])];
+    method /= sizeof(mnorm) / sizeof(mnorm[0]);
+    bool spatprop = sprop[method % sizeof(sprop) / sizeof(sprop[0])];
+    method /= sizeof(sprop) / sizeof(sprop[0]);
 
     if(method)
         return pair< String, vector<double> >(String(), vector<double>());
@@ -134,8 +134,8 @@ pair< String, vector<double> > getDISFlow(int method, Mat img1, Mat img2, Mat& f
     DIS->setGradientDescentIterations(gditer[gditer_id]);
     DIS->setPatchSize(psovsize[psovsize_id].first);
     DIS->setPatchStride(psovsize[psovsize_id].second);
-    DIS->setUseMeanNormalization((bool)meannorm);
-    DIS->setUseSpatialPropagation((bool)spatprop);
+    DIS->setUseMeanNormalization(meannorm);
+    DIS->setUseSpatialPropagation(spatprop);
     DIS->setVariationalRefinementIterations(refiter[refiter_id]);
     DIS->setVariationalRefinementAlpha(refalfa[refalfa_id]);
     DIS->setVariationalRefinementDelta(refgama[refgama_id]);
@@ -504,32 +504,36 @@ int main(int, char**)
         printf("flowid;time1;time2;time3;normO1;normO2;normO3;normO4;normO5;normO6;normO7;normO8;normO9;normO10;normO11;normN1;normN2;normN3;normN4;normN5;normN6;normN7;normN8;normN9;normN10;normN11;\n");
         for (int flow_id = 0; flow_id < time.size(); flow_id++)
         {
-            time[flow_id][0] /= processedSamples[flow_id];
-            time[flow_id][1] /= processedSamples[flow_id];
-            time[flow_id][2] /= processedSamples[flow_id];
+            double time0 = time[flow_id][0] / processedSamples[flow_id];
+            double time1 = time[flow_id][1] / processedSamples[flow_id];
+            double time2 = time[flow_id][2] / processedSamples[flow_id];
 
-            normO[flow_id][ 1] /= processedSamples[flow_id];
-            normO[flow_id][ 2] /= processedSamples[flow_id];
-            normO[flow_id][ 3] /= processedSamples[flow_id];
-            normO[flow_id][ 4] /= processedSamples[flow_id];
-            normO[flow_id][ 5] /= processedSamples[flow_id];
-            normO[flow_id][ 7] /= processedSamples[flow_id];
-            normO[flow_id][ 8] /= processedSamples[flow_id];
-            normO[flow_id][ 9] /= processedSamples[flow_id];
-            normO[flow_id][10] /= processedSamples[flow_id];
-            normN[flow_id][ 1] /= processedSamples[flow_id];
-            normN[flow_id][ 2] /= processedSamples[flow_id];
-            normN[flow_id][ 3] /= processedSamples[flow_id];
-            normN[flow_id][ 4] /= processedSamples[flow_id];
-            normN[flow_id][ 5] /= processedSamples[flow_id];
-            normN[flow_id][ 7] /= processedSamples[flow_id];
-            normN[flow_id][ 8] /= processedSamples[flow_id];
-            normN[flow_id][ 9] /= processedSamples[flow_id];
-            normN[flow_id][10] /= processedSamples[flow_id];
+            double  normO0 = normO[flow_id][ 0];
+            double  normO1 = normO[flow_id][ 1] / processedSamples[flow_id];
+            double  normO2 = normO[flow_id][ 2] / processedSamples[flow_id];
+            double  normO3 = normO[flow_id][ 3] / processedSamples[flow_id];
+            double  normO4 = normO[flow_id][ 4] / processedSamples[flow_id];
+            double  normO5 = normO[flow_id][ 5] / processedSamples[flow_id];
+            double  normO6 = normO[flow_id][ 6];
+            double  normO7 = normO[flow_id][ 7] / processedSamples[flow_id];
+            double  normO8 = normO[flow_id][ 8] / processedSamples[flow_id];
+            double  normO9 = normO[flow_id][ 9] / processedSamples[flow_id];
+            double normO10 = normO[flow_id][10] / processedSamples[flow_id];
+            double  normN0 = normN[flow_id][ 0];
+            double  normN1 = normN[flow_id][ 1] / processedSamples[flow_id];
+            double  normN2 = normN[flow_id][ 2] / processedSamples[flow_id];
+            double  normN3 = normN[flow_id][ 3] / processedSamples[flow_id];
+            double  normN4 = normN[flow_id][ 4] / processedSamples[flow_id];
+            double  normN5 = normN[flow_id][ 5] / processedSamples[flow_id];
+            double  normN6 = normN[flow_id][6];
+            double  normN7 = normN[flow_id][ 7] / processedSamples[flow_id];
+            double  normN8 = normN[flow_id][ 8] / processedSamples[flow_id];
+            double  normN9 = normN[flow_id][ 9] / processedSamples[flow_id];
+            double normN10 = normN[flow_id][10] / processedSamples[flow_id];
             printf("%s;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;\n",
-                   names[flow_id].c_str(), time[flow_id][0], time[flow_id][1], time[flow_id][2],
-                   normO[flow_id][0], normO[flow_id][1], normO[flow_id][2], normO[flow_id][3], normO[flow_id][4], normO[flow_id][5], normO[flow_id][6], normO[flow_id][7], normO[flow_id][8], normO[flow_id][9], normO[flow_id][10],
-                   normN[flow_id][0], normN[flow_id][1], normN[flow_id][2], normN[flow_id][3], normN[flow_id][4], normN[flow_id][5], normN[flow_id][6], normN[flow_id][7], normN[flow_id][8], normN[flow_id][9], normN[flow_id][10]);
+                   names[flow_id].c_str(), time0, time1, time2,
+                   normO0, normO1, normO2, normO3, normO4, normO5, normO6, normO7, normO8, normO9, normO10,
+                   normN0, normN1, normN2, normN3, normN4, normN5, normN6, normN7, normN8, normN9, normN10);
         }
     }
     return 0;
