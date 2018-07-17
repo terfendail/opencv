@@ -85,7 +85,6 @@ pair< String, vector<double> > getDISFlow(int method, Mat img1, Mat img2, Mat& f
 {
     String metname;
     int64 times[4];
-    flw = Mat(img1.size(), CV_32FC2);
 
     int fscale[] = { 0, 1, 2, 3 };
     int gditer[] = { 256, 128, 96, 64, 32, 16, 12, 8 };
@@ -129,25 +128,25 @@ pair< String, vector<double> > getDISFlow(int method, Mat img1, Mat img2, Mat& f
     method /= 2;
     bool spatprop = sprop[method % 2];
     method /= 2;
-    if (method >= 0 && method < sizeof(fscale) / sizeof(fscale[0]))
+    if (method >= 0 && method < (int)(sizeof(fscale) / sizeof(fscale[0])))
         fscale_id = method;
     method -= sizeof(fscale) / sizeof(fscale[0]);
-    if (method >= 0 && method < sizeof(gditer) / sizeof(gditer[0]))
+    if (method >= 0 && method < (int)(sizeof(gditer) / sizeof(gditer[0])))
         gditer_id = method;
     method -= sizeof(gditer) / sizeof(gditer[0]);
-    if (method >= 0 && method < sizeof(psovsize) / sizeof(psovsize[0]))
+    if (method >= 0 && method < (int)(sizeof(psovsize) / sizeof(psovsize[0])))
         psovsize_id = method;
     method -= sizeof(psovsize) / sizeof(psovsize[0]);
-    if (method >= 0 && method < sizeof(refiter) / sizeof(refiter[0]))
+    if (method >= 0 && method < (int)(sizeof(refiter) / sizeof(refiter[0])))
         refiter_id = method;
     method -= sizeof(refiter) / sizeof(refiter[0]);
-    if (method >= 0 && method < sizeof(refalfa) / sizeof(refalfa[0]))
+    if (method >= 0 && method < (int)(sizeof(refalfa) / sizeof(refalfa[0])))
         refalfa_id = method;
     method -= sizeof(refalfa) / sizeof(refalfa[0]);
-    if (method >= 0 && method < sizeof(refgama) / sizeof(refgama[0]))
+    if (method >= 0 && method < (int)(sizeof(refgama) / sizeof(refgama[0])))
         refgama_id = method;
     method -= sizeof(refgama) / sizeof(refgama[0]);
-    if (method >= 0 && method < sizeof(refdelt) / sizeof(refdelt[0]))
+    if (method >= 0 && method < (int)(sizeof(refdelt) / sizeof(refdelt[0])))
         refdelt_id = method;
     method -= sizeof(refdelt) / sizeof(refdelt[0]);
 
@@ -192,7 +191,6 @@ pair< String, vector<double> > getFlow(int method, Mat img1, Mat img2, Mat& flw)
 {
     String metname;
     int64 times[4];
-    flw = Mat(img1.size(), CV_32FC2);
     switch (method)
     {
     case 0:
