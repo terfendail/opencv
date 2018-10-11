@@ -1144,6 +1144,26 @@ inline v_int32x4 v_interleave_pairs(const v_int32x4& vec)
 inline v_uint32x4 v_interleave_pairs(const v_uint32x4& vec) { return v_reinterpret_as_u32(v_interleave_pairs(v_reinterpret_as_s32(vec))); }
 inline v_float32x4 v_interleave_pairs(const v_float32x4& vec) { return v_reinterpret_as_f32(v_interleave_pairs(v_reinterpret_as_s32(vec))); }
 
+inline v_int8x16 v_unpack_triplets(const v_int8x16& vec)
+{
+    schar CV_DECL_ALIGNED(32) val[16];
+    v_store_aligned(val, vec);
+    return v_int8x16(val[0], val[1], val[2], val[3], val[3], val[4], val[5], val[6], val[6], val[7], val[8], val[9], val[9], val[10], val[11], val[12]);
+}
+inline v_uint8x16 v_unpack_triplets(const v_uint8x16& vec) { return v_reinterpret_as_u8(v_unpack_triplets(v_reinterpret_as_s8(vec))); }
+
+inline v_int16x8 v_unpack_triplets(const v_int16x8& vec)
+{
+    short CV_DECL_ALIGNED(32) val[8];
+    v_store_aligned(val, vec);
+    return v_int16x8(val[0], val[1], val[2], val[3], val[3], val[4], val[5], val[6]);
+}
+inline v_uint16x8 v_unpack_triplets(const v_uint16x8& vec) { return v_reinterpret_as_u16(v_unpack_triplets(v_reinterpret_as_s16(vec))); }
+
+inline v_int32x4 v_unpack_triplets(const v_int32x4& vec) { return vec; }
+inline v_uint32x4 v_unpack_triplets(const v_uint32x4& vec) { return vec; }
+inline v_float32x4 v_unpack_triplets(const v_float32x4& vec) { return vec; }
+
 inline v_int8x16 v_pack_triplets(const v_int8x16& vec)
 {
     schar CV_DECL_ALIGNED(32) val[16];
@@ -1159,6 +1179,10 @@ inline v_int16x8 v_pack_triplets(const v_int16x8& vec)
     return v_int16x8(val[0], val[1], val[2], val[4], val[5], val[6], val[7], val[7]);
 }
 inline v_uint16x8 v_pack_triplets(const v_uint16x8& vec) { return v_reinterpret_as_u16(v_pack_triplets(v_reinterpret_as_s16(vec))); }
+
+inline v_int32x4 v_pack_triplets(const v_int32x4& vec) { return vec; }
+inline v_uint32x4 v_pack_triplets(const v_uint32x4& vec) { return vec; }
+inline v_float32x4 v_pack_triplets(const v_float32x4& vec) { return vec; }
 
 /////// FP16 support ////////
 

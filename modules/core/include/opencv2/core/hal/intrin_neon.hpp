@@ -1812,6 +1812,22 @@ inline v_int32x4 v_interleave_pairs(const v_int32x4& vec)
 inline v_uint32x4 v_interleave_pairs(const v_uint32x4& vec) { return v_reinterpret_as_u32(v_interleave_pairs(v_reinterpret_as_s32(vec))); }
 inline v_float32x4 v_interleave_pairs(const v_float32x4& vec) { return v_reinterpret_as_f32(v_interleave_pairs(v_reinterpret_as_s32(vec))); }
 
+inline v_int8x16 v_unpack_triplets(const v_int8x16& vec)
+{
+    return v_int8x16(vcombine_s8(vtbl1_s8(vget_low_s8(vec.val), vcreate_s8(0x0605040303020100)), vtbl1_s8(vext_s8(vget_low_s8(vec.val), vget_high_s8(vec.val), 6), vcreate_s8(0x0605040303020100))));
+}
+inline v_uint8x16 v_unpack_triplets(const v_uint8x16& vec) { return v_reinterpret_as_u8(v_unpack_triplets(v_reinterpret_as_s8(vec))); }
+
+inline v_int16x8 v_unpack_triplets(const v_int16x8& vec)
+{
+    return v_int16x8(vcombine_s16(vget_low_s16(vec.val), vext_s16(vget_low_s16(vec.val), vget_high_s16(vec.val), 3)));
+}
+inline v_uint16x8 v_unpack_triplets(const v_uint16x8& vec) { return v_reinterpret_as_u16(v_pack_untriplets(v_reinterpret_as_s16(vec))); }
+
+inline v_int32x4 v_unpack_triplets(const v_int32x4& vec) { return vec; }
+inline v_uint32x4 v_unpack_triplets(const v_uint32x4& vec) { return vec; }
+inline v_float32x4 v_unpack_triplets(const v_float32x4& vec) { return vec; }
+
 inline v_int8x16 v_pack_triplets(const v_int8x16& vec)
 {
     return v_int8x16(vextq_s8(vcombine_s8(vtbl1_s8(vget_low_s8(vec.val), vcreate_s8(0x0605040201000000)), vtbl1_s8(vget_high_s8(vec.val), vcreate_s8(0x0807060504020100))), vdupq_n_s8(0), 2));
@@ -1823,6 +1839,10 @@ inline v_int16x8 v_pack_triplets(const v_int16x8& vec)
     return v_int16x8(vreinterpretq_s16_s8(vextq_s8(vcombine_s8(vtbl1_s8(vget_low_s8(vreinterpretq_s8_s16(vec.val)), vcreate_s8(0x0504030201000000)), vget_high_s8(vreinterpretq_s8_s16(vec.val))), vdupq_n_s8(0), 2)));
 }
 inline v_uint16x8 v_pack_triplets(const v_uint16x8& vec) { return v_reinterpret_as_u16(v_pack_triplets(v_reinterpret_as_s16(vec))); }
+
+inline v_int32x4 v_pack_triplets(const v_int32x4& vec) { return vec; }
+inline v_uint32x4 v_pack_triplets(const v_uint32x4& vec) { return vec; }
+inline v_float32x4 v_pack_triplets(const v_float32x4& vec) { return vec; }
 
 #if CV_SIMD128_64F
 inline v_float64x2 v_lut(const double* tab, const int* idx)

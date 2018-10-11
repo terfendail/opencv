@@ -1596,6 +1596,30 @@ inline v_int32x8 v_interleave_pairs(const v_int32x8& vec)
 inline v_uint32x8 v_interleave_pairs(const v_uint32x8& vec) { return v_reinterpret_as_u32(v_interleave_pairs(v_reinterpret_as_s32(vec))); }
 inline v_float32x8 v_interleave_pairs(const v_float32x8& vec) { return v_reinterpret_as_f32(v_interleave_pairs(v_reinterpret_as_s32(vec))); }
 
+inline v_int8x32 v_unpack_triplets(const v_int8x32& vec)
+{
+    return v_int8x32(_mm256_shuffle_epi8(_mm256_permutevar8x32_epi32(vec.val, _mm256_set_epi64x(0x0000000600000005, 0x0000000400000003, 0x0000000300000002, 0x0000000100000000)),
+                                         _mm256_broadcastsi128_si256(_mm_set_epi64x(0x0c0b0a0909080706, 0x0605040303020100))));
+}
+inline v_uint8x32 v_unpack_triplets(const v_uint8x32& vec) { return v_reinterpret_as_u8(v_unpack_triplets(v_reinterpret_as_s8(vec))); }
+
+inline v_int16x16 v_unpack_triplets(const v_int16x16& vec)
+{
+    return v_int16x16(_mm256_shuffle_epi8(_mm256_permutevar8x32_epi32(vec.val, _mm256_set_epi64x(0x0000000600000005, 0x0000000400000003, 0x0000000300000002, 0x0000000100000000)),
+                                          _mm256_broadcastsi128_si256(_mm_set_epi64x(0x0d0c0b0a09080706, 0x0706050403020100))));
+}
+inline v_uint16x16 v_unpack_triplets(const v_uint16x16& vec) { return v_reinterpret_as_u16(v_unpack_triplets(v_reinterpret_as_s16(vec))); }
+
+inline v_int32x8 v_unpack_triplets(const v_int32x8& vec)
+{
+    return v_int32x8(_mm256_permutevar8x32_epi32(vec.val, _mm256_set_epi64x(0x0000000600000005, 0x0000000400000003, 0x0000000300000002, 0x0000000100000000)));
+}
+inline v_uint32x8 v_unpack_triplets(const v_uint32x8& vec) { return v_reinterpret_as_u32(v_unpack_triplets(v_reinterpret_as_s32(vec))); }
+inline v_float32x8 v_unpack_triplets(const v_float32x8& vec)
+{
+    return v_float32x8(_mm256_permutevar8x32_ps(vec.val, _mm256_set_epi64x(0x0000000600000005, 0x0000000400000003, 0x0000000300000002, 0x0000000100000000)));
+}
+
 inline v_int8x32 v_pack_triplets(const v_int8x32& vec)
 {
     return v_int8x32(_mm256_permutevar8x32_epi32(_mm256_shuffle_epi8(vec.val, _mm256_broadcastsi128_si256(_mm_set_epi64x(0xffffff0f0e0d0c0a, 0x0908060504020100))),
@@ -1609,6 +1633,16 @@ inline v_int16x16 v_pack_triplets(const v_int16x16& vec)
                                                   _mm256_set_epi64x(0x0000000700000007, 0x0000000600000005, 0x0000000400000002, 0x0000000100000000)));
 }
 inline v_uint16x16 v_pack_triplets(const v_uint16x16& vec) { return v_reinterpret_as_u16(v_pack_triplets(v_reinterpret_as_s16(vec))); }
+
+inline v_int32x8 v_pack_triplets(const v_int32x8& vec)
+{
+    return v_int32x8(_mm256_permutevar8x32_epi32(vec.val, _mm256_set_epi64x(0x0000000700000007, 0x0000000600000005, 0x0000000400000002, 0x0000000100000000)));
+}
+inline v_uint32x8 v_pack_triplets(const v_uint32x8& vec) { return v_reinterpret_as_u32(v_pack_triplets(v_reinterpret_as_s32(vec))); }
+inline v_float32x8 v_pack_triplets(const v_float32x8& vec)
+{
+    return v_float32x8(_mm256_permutevar8x32_ps(vec.val, _mm256_set_epi64x(0x0000000700000007, 0x0000000600000005, 0x0000000400000002, 0x0000000100000000)));
+}
 
 ////////// Matrix operations /////////
 

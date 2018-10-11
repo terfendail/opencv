@@ -1905,10 +1905,21 @@ template<typename _Tp, int n> inline v_reg<_Tp, n> v_interleave_quads(const v_re
     return c;
 }
 
+template<typename _Tp, int n> inline v_reg<_Tp, n> v_unpack_triplets(const v_reg<_Tp, n>& vec)
+{
+    v_reg<float, n> c;
+    for (int i = 0; i < n / 4; i++)
+    {
+        c.s[4 * i] = vec.s[3 * i];
+        c.s[4 * i + 1] = vec.s[3 * i + 1];
+        c.s[4 * i + 2] = vec.s[3 * i + 2];
+    }
+    return c;
+}
+
 template<typename _Tp, int n> inline v_reg<_Tp, n> v_pack_triplets(const v_reg<_Tp, n>& vec)
 {
     v_reg<float, n> c;
-    int j = 0;
     for (int i = 0; i < n/4; i++)
     {
         c.s[3*i  ] = vec.s[4*i  ];
