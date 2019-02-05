@@ -438,7 +438,7 @@ struct RemapNoVec
                     const void*, int ) const { return 0; }
 };
 
-#if CV_SIMD128
+#if CV_SIMD
 
 struct RemapVec_8u
 {
@@ -454,185 +454,86 @@ struct RemapVec_8u
         const uchar *S0 = _src.ptr(), *S1 = _src.ptr(1);
         const short* wtab = cn == 1 ? (const short*)_wtab : &BilinearTab_iC4[0][0][0];
         uchar* D = (uchar*)_dst;
-        v_int32x4 delta = v_setall_s32(INTER_REMAP_COEF_SCALE / 2);
-        v_int16x8 xy2ofs = v_reinterpret_as_s16(v_setall_s32(cn + (sstep << 16)));
-        int CV_DECL_ALIGNED(16) iofs0[4], iofs1[4];
-        const uchar* src_limit_8bytes = _src.datalimit - v_int16x8::nlanes;
-#define CV_PICK_AND_PACK_RGB(ptr, offset, result)  \
-        {                                          \
-            const uchar* const p = ((const uchar*)ptr) + (offset); \
-            if (p <= src_limit_8bytes)             \
-            {                                      \
-                v_uint8x16 rrggbb, dummy;          \
-                v_uint16x8 rrggbb8, dummy8;        \
-                v_uint8x16 rgb0 = v_reinterpret_as_u8(v_int32x4(*(int*)(p), 0, 0, 0)); \
-                v_uint8x16 rgb1 = v_reinterpret_as_u8(v_int32x4(*(int*)(p + 3), 0, 0, 0)); \
-                v_zip(rgb0, rgb1, rrggbb, dummy);  \
-                v_expand(rrggbb, rrggbb8, dummy8); \
-                result = v_reinterpret_as_s16(rrggbb8); \
-            }                                      \
-            else                                   \
-            {                                      \
-                result = v_int16x8((short)p[0], (short)p[3], /* r0r1 */ \
-                                   (short)p[1], (short)p[4], /* g0g1 */ \
-                                   (short)p[2], (short)p[5], /* b0b1 */ 0, 0); \
-            }                                      \
-        }
-#define CV_PICK_AND_PACK_RGBA(ptr, offset, result) \
-        {                                          \
-            const uchar* const p = ((const uchar*)ptr) + (offset); \
-            CV_DbgAssert(p <= src_limit_8bytes);   \
-            v_uint8x16 rrggbbaa, dummy;            \
-            v_uint16x8 rrggbbaa8, dummy8;          \
-            v_uint8x16 rgba0 = v_reinterpret_as_u8(v_int32x4(*(int*)(p), 0, 0, 0)); \
-            v_uint8x16 rgba1 = v_reinterpret_as_u8(v_int32x4(*(int*)(p + v_int32x4::nlanes), 0, 0, 0)); \
-            v_zip(rgba0, rgba1, rrggbbaa, dummy);  \
-            v_expand(rrggbbaa, rrggbbaa8, dummy8); \
-            result = v_reinterpret_as_s16(rrggbbaa8); \
-        }
-#define CV_PICK_AND_PACK4(base,offset)             \
-            v_uint16x8(*(ushort*)(base + offset[0]), *(ushort*)(base + offset[1]), \
-                       *(ushort*)(base + offset[2]), *(ushort*)(base + offset[3]), \
-                       0, 0, 0, 0)
+        v_int16 xy2ofs = v_reinterpret_as_s16(vx_setall_s32(cn + (sstep << 16)));
+        int CV_DECL_ALIGNED(CV_SIMD_WIDTH) iofs0[2*v_int32::nlanes];
 
         if( cn == 1 )
         {
-            for( ; x <= width - 8; x += 8 )
+            int* wtab1 = (int*)wtab + 1;
+            for( ; x <= width - v_int16::nlanes; x += v_int16::nlanes)
             {
-                v_int16x8 _xy0 = v_load(XY + x*2);
-                v_int16x8 _xy1 = v_load(XY + x*2 + 8);
-                v_int32x4 v0, v1, v2, v3, a0, b0, c0, d0, a1, b1, c1, d1, a2, b2, c2, d2;
+                v_store_aligned( iofs0,                   v_dotprod(vx_load(XY + x * 2),                   xy2ofs));
+                v_store_aligned( iofs0 + v_int32::nlanes, v_dotprod(vx_load(XY + x * 2 + v_int16::nlanes), xy2ofs));
 
-                v_int32x4 xy0 = v_dotprod( _xy0, xy2ofs );
-                v_int32x4 xy1 = v_dotprod( _xy1, xy2ofs );
-                v_store( iofs0, xy0 );
-                v_store( iofs1, xy1 );
+                v_uint16 v0, v1, v2, v3;
+                v_expand(vx_lut_pairs(S0, iofs0), v0, v2);
+                v_expand(vx_lut_pairs(S1, iofs0), v1, v3);
 
-                v_uint16x8 stub, dummy;
-                v_uint16x8 vec16;
-                vec16 = CV_PICK_AND_PACK4(S0, iofs0);
-                v_expand(v_reinterpret_as_u8(vec16), stub, dummy);
-                v0 = v_reinterpret_as_s32(stub);
-                vec16 = CV_PICK_AND_PACK4(S1, iofs0);
-                v_expand(v_reinterpret_as_u8(vec16), stub, dummy);
-                v1 = v_reinterpret_as_s32(stub);
+                v_uint32 wil, wih;
+                v_expand(vx_load(FXY + x) << 1, wil, wih);
+                v_int16 a = v_reinterpret_as_s16(v_lut((int*)wtab, v_reinterpret_as_s32(wil)));
+                v_int16 b = v_reinterpret_as_s16(v_lut(wtab1,      v_reinterpret_as_s32(wil)));
+                v_int16 c = v_reinterpret_as_s16(v_lut((int*)wtab, v_reinterpret_as_s32(wih)));
+                v_int16 d = v_reinterpret_as_s16(v_lut(wtab1,      v_reinterpret_as_s32(wih)));
 
-                v_zip(v_load_low((int*)(wtab + FXY[x]     * 4)), v_load_low((int*)(wtab + FXY[x + 1] * 4)), a0, a1);
-                v_zip(v_load_low((int*)(wtab + FXY[x + 2] * 4)), v_load_low((int*)(wtab + FXY[x + 3] * 4)), b0, b1);
-                v_recombine(a0, b0, a2, b2);
-                v1 = v_dotprod(v_reinterpret_as_s16(v1), v_reinterpret_as_s16(b2), delta);
-                v0 = v_dotprod(v_reinterpret_as_s16(v0), v_reinterpret_as_s16(a2), v1);
-
-                vec16 = CV_PICK_AND_PACK4(S0, iofs1);
-                v_expand(v_reinterpret_as_u8(vec16), stub, dummy);
-                v2 = v_reinterpret_as_s32(stub);
-                vec16 = CV_PICK_AND_PACK4(S1, iofs1);
-                v_expand(v_reinterpret_as_u8(vec16), stub, dummy);
-                v3 = v_reinterpret_as_s32(stub);
-
-                v_zip(v_load_low((int*)(wtab + FXY[x + 4] * 4)), v_load_low((int*)(wtab + FXY[x + 5] * 4)), c0, c1);
-                v_zip(v_load_low((int*)(wtab + FXY[x + 6] * 4)), v_load_low((int*)(wtab + FXY[x + 7] * 4)), d0, d1);
-                v_recombine(c0, d0, c2, d2);
-                v3 = v_dotprod(v_reinterpret_as_s16(v3), v_reinterpret_as_s16(d2), delta);
-                v2 = v_dotprod(v_reinterpret_as_s16(v2), v_reinterpret_as_s16(c2), v3);
-
-                v0 = v0 >> INTER_REMAP_COEF_BITS;
-                v2 = v2 >> INTER_REMAP_COEF_BITS;
-                v_pack_u_store(D + x, v_pack(v0, v2));
+                v_pack_u_store(D + x, v_rshr_pack<INTER_REMAP_COEF_BITS>(v_dotprod(v_reinterpret_as_s16(v0), a) +
+                                                                         v_dotprod(v_reinterpret_as_s16(v1), b),
+                                                                         v_dotprod(v_reinterpret_as_s16(v2), c) +
+                                                                         v_dotprod(v_reinterpret_as_s16(v3), d)));
             }
         }
         else if( cn == 3 )
         {
-            for( ; x <= width - 5; x += 4, D += 12 )
+            for( ; x <= width - (v_int32::nlanes/2 + (v_int16::nlanes+2)/3); x += v_int32::nlanes, D += 3*v_int32::nlanes )
             {
-                v_int16x8 u0, v0, u1, v1;
-                v_int16x8 _xy0 = v_load(XY + x * 2);
+                v_store_aligned(iofs0, v_dotprod(vx_load(XY + x * 2), xy2ofs));
+                v_uint16 u0, v0, u1, v1, u2, v2, u3, v3;
 
-                v_int32x4 xy0 = v_dotprod(_xy0, xy2ofs);
-                v_store(iofs0, xy0);
+                v_uint8 p01, p23;
+                v_zip(vx_lut_quads(S0, iofs0), v_reinterpret_as_u8(v_reinterpret_as_u32(vx_lut_quads(S0+2, iofs0)) >> 8), p01, p23);
+                v_expand(p01, u0, u1);
+                v_expand(p23, u2, u3);
+                v_zip(vx_lut_quads(S1, iofs0), v_reinterpret_as_u8(v_reinterpret_as_u32(vx_lut_quads(S1+2, iofs0)) >> 8), p01, p23);
+                v_expand(p01, v0, v1);
+                v_expand(p23, v2, v3);
 
-                int offset0 = FXY[x] * 16;
-                int offset1 = FXY[x + 1] * 16;
-                int offset2 = FXY[x + 2] * 16;
-                int offset3 = FXY[x + 3] * 16;
-                v_int16x8 w00 = v_load(wtab + offset0);
-                v_int16x8 w01 = v_load(wtab + offset0 + 8);
-                v_int16x8 w10 = v_load(wtab + offset1);
-                v_int16x8 w11 = v_load(wtab + offset1 + 8);
-
-                CV_PICK_AND_PACK_RGB(S0, iofs0[0], u0);
-                CV_PICK_AND_PACK_RGB(S1, iofs0[0], v0);
-                CV_PICK_AND_PACK_RGB(S0, iofs0[1], u1);
-                CV_PICK_AND_PACK_RGB(S1, iofs0[1], v1);
-
-                v_int32x4 result0 = v_dotprod(u0, w00, v_dotprod(v0, w01, delta)) >> INTER_REMAP_COEF_BITS;
-                v_int32x4 result1 = v_dotprod(u1, w10, v_dotprod(v1, w11, delta)) >> INTER_REMAP_COEF_BITS;
-
-                result0 = v_rotate_left<1>(result0);
-                v_int16x8 result8 = v_pack(result0, result1);
-                v_uint8x16 result16 = v_pack_u(result8, result8);
-                v_store_low(D, v_rotate_right<1>(result16));
-
-
-                w00 = v_load(wtab + offset2);
-                w01 = v_load(wtab + offset2 + 8);
-                w10 = v_load(wtab + offset3);
-                w11 = v_load(wtab + offset3 + 8);
-                CV_PICK_AND_PACK_RGB(S0, iofs0[2], u0);
-                CV_PICK_AND_PACK_RGB(S1, iofs0[2], v0);
-                CV_PICK_AND_PACK_RGB(S0, iofs0[3], u1);
-                CV_PICK_AND_PACK_RGB(S1, iofs0[3], v1);
-
-                result0 = v_dotprod(u0, w00, v_dotprod(v0, w01, delta)) >> INTER_REMAP_COEF_BITS;
-                result1 = v_dotprod(u1, w10, v_dotprod(v1, w11, delta)) >> INTER_REMAP_COEF_BITS;
-
-                result0 = v_rotate_left<1>(result0);
-                result8 = v_pack(result0, result1);
-                result16 = v_pack_u(result8, result8);
-                v_store_low(D + 6, v_rotate_right<1>(result16));
+                int offset[v_int32::nlanes];
+                v_store(offset, v_reinterpret_as_s32(vx_load_expand(FXY + x)) << 2);
+                v_pack_u_store(D,                       v_pack_triplets(v_rshr_pack<INTER_REMAP_COEF_BITS>(v_dotprod(v_reinterpret_as_s16(u0), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset))) +
+                                                                                                           v_dotprod(v_reinterpret_as_s16(v0), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset))),
+                                                                                                           v_dotprod(v_reinterpret_as_s16(u1), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset+v_int32::nlanes/4))) +
+                                                                                                           v_dotprod(v_reinterpret_as_s16(v1), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset+v_int32::nlanes/4))))));
+                v_pack_u_store(D + 3*v_int32::nlanes/2, v_pack_triplets(v_rshr_pack<INTER_REMAP_COEF_BITS>(v_dotprod(v_reinterpret_as_s16(u2), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset+2*v_int32::nlanes/4))) +
+                                                                                                           v_dotprod(v_reinterpret_as_s16(v2), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset+2*v_int32::nlanes/4))),
+                                                                                                           v_dotprod(v_reinterpret_as_s16(u3), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset+3*v_int32::nlanes/4))) +
+                                                                                                           v_dotprod(v_reinterpret_as_s16(v3), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset+3*v_int32::nlanes/4))))));
             }
         }
         else if( cn == 4 )
         {
-            for( ; x <= width - 4; x += 4, D += 16 )
+            for( ; x <= width - v_int32::nlanes; x += v_int32::nlanes, D += 4*v_int32::nlanes)
             {
-                v_int16x8 _xy0 = v_load(XY + x * 2);
-                v_int16x8 u0, v0, u1, v1;
+                v_store_aligned(iofs0, v_dotprod(vx_load(XY + x * 2), xy2ofs));
+                v_uint16 u0, v0, u1, v1, u2, v2, u3, v3;
+                v_uint8 p01, p23;
+                v_zip(vx_lut_quads(S0, iofs0), vx_lut_quads(S0 + 4, iofs0), p01, p23);
+                v_expand(p01, u0, u1);
+                v_expand(p23, u2, u3);
+                v_zip(vx_lut_quads(S1, iofs0), vx_lut_quads(S1 + 4, iofs0), p01, p23);
+                v_expand(p01, v0, v1);
+                v_expand(p23, v2, v3);
 
-                v_int32x4 xy0 = v_dotprod( _xy0, xy2ofs );
-                v_store(iofs0, xy0);
-                int offset0 = FXY[x] * 16;
-                int offset1 = FXY[x + 1] * 16;
-                int offset2 = FXY[x + 2] * 16;
-                int offset3 = FXY[x + 3] * 16;
 
-                v_int16x8 w00 = v_load(wtab + offset0);
-                v_int16x8 w01 = v_load(wtab + offset0 + 8);
-                v_int16x8 w10 = v_load(wtab + offset1);
-                v_int16x8 w11 = v_load(wtab + offset1 + 8);
-                CV_PICK_AND_PACK_RGBA(S0, iofs0[0], u0);
-                CV_PICK_AND_PACK_RGBA(S1, iofs0[0], v0);
-                CV_PICK_AND_PACK_RGBA(S0, iofs0[1], u1);
-                CV_PICK_AND_PACK_RGBA(S1, iofs0[1], v1);
-
-                v_int32x4 result0 = v_dotprod(u0, w00, v_dotprod(v0, w01, delta)) >> INTER_REMAP_COEF_BITS;
-                v_int32x4 result1 = v_dotprod(u1, w10, v_dotprod(v1, w11, delta)) >> INTER_REMAP_COEF_BITS;
-                v_int16x8 result8 = v_pack(result0, result1);
-                v_pack_u_store(D, result8);
-
-                w00 = v_load(wtab + offset2);
-                w01 = v_load(wtab + offset2 + 8);
-                w10 = v_load(wtab + offset3);
-                w11 = v_load(wtab + offset3 + 8);
-                CV_PICK_AND_PACK_RGBA(S0, iofs0[2], u0);
-                CV_PICK_AND_PACK_RGBA(S1, iofs0[2], v0);
-                CV_PICK_AND_PACK_RGBA(S0, iofs0[3], u1);
-                CV_PICK_AND_PACK_RGBA(S1, iofs0[3], v1);
-
-                result0 = v_dotprod(u0, w00, v_dotprod(v0, w01, delta)) >> INTER_REMAP_COEF_BITS;
-                result1 = v_dotprod(u1, w10, v_dotprod(v1, w11, delta)) >> INTER_REMAP_COEF_BITS;
-                result8 = v_pack(result0, result1);
-                v_pack_u_store(D + 8, result8);
+                int offset[v_int32::nlanes];
+                v_store(offset, v_reinterpret_as_s32(vx_load_expand(FXY + x)) << 2);
+                v_store(D, v_pack_u(v_rshr_pack<INTER_REMAP_COEF_BITS>(v_dotprod(v_reinterpret_as_s16(u0), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset))) +
+                                                                       v_dotprod(v_reinterpret_as_s16(v0), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset))),
+                                                                       v_dotprod(v_reinterpret_as_s16(u1), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset+v_int32::nlanes/4))) +
+                                                                       v_dotprod(v_reinterpret_as_s16(v1), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset+v_int32::nlanes/4)))),
+                                    v_rshr_pack<INTER_REMAP_COEF_BITS>(v_dotprod(v_reinterpret_as_s16(u2), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset+2*v_int32::nlanes/4))) +
+                                                                       v_dotprod(v_reinterpret_as_s16(v2), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset+2*v_int32::nlanes/4))),
+                                                                       v_dotprod(v_reinterpret_as_s16(u3), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab,     offset+3*v_int32::nlanes/4))) +
+                                                                       v_dotprod(v_reinterpret_as_s16(v3), v_reinterpret_as_s16(vx_lut_pairs((int64_t*)wtab + 2, offset+3*v_int32::nlanes/4))))));
             }
         }
 
