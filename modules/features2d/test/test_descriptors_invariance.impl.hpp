@@ -12,6 +12,25 @@ typedef tuple<std::string, Ptr<FeatureDetector>, Ptr<DescriptorExtractor>, float
     String_FeatureDetector_DescriptorExtractor_Float_t;
 
 
+static void SetSuitableSIFTOctave(vector<KeyPoint>& keypoints,
+                                    int firstOctave = -1, int nOctaveLayers = 3, double sigma = 1.6)
+{
+    for (size_t i = 0; i < keypoints.size(); i++ )
+    {
+        int octv, layer;
+        KeyPoint& kpt = keypoints[i];
+        float octv_layer = std::log(kpt.size / sigma) / std::log(2.) - 1;
+        octv = cvFloor(octv_layer);
+        layer = cvRound( (octv_layer - octv) * nOctaveLayers );
+        if (octv < firstOctave)
+        {
+            octv = firstOctave;
+            layer = 0;
+        }
+        kpt.octave = (layer << 8) | (octv & 255);
+    }
+}
+
 static
 void SetSuitableSIFTOctave(vector<KeyPoint>& keypoints,
                              int firstOctave = -1, int nOctaveLayers = 3, double sigma = 1.6)
