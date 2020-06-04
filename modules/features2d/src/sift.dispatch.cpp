@@ -453,7 +453,7 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
 {
     CV_TRACE_FUNCTION();
 
-    int firstOctave = -1, actualNOctaves = 0, actualNLayers = 0;
+    int firstOctave = -1;
     Mat image = _image.getMat(), mask = _mask.getMat();
 
     if( image.empty() || image.depth() != CV_8U )
@@ -462,28 +462,9 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     if( !mask.empty() && mask.type() != CV_8UC1 )
         CV_Error( Error::StsBadArg, "mask has incorrect type (!=CV_8UC1)" );
 
-    if( useProvidedKeypoints )
-    {
-        firstOctave = 0;
-        int maxOctave = INT_MIN;
-        for( size_t i = 0; i < keypoints.size(); i++ )
-        {
-            int octave, layer;
-            float scale;
-            unpackOctave(keypoints[i], octave, layer, scale);
-            firstOctave = std::min(firstOctave, octave);
-            maxOctave = std::max(maxOctave, octave);
-            actualNLayers = std::max(actualNLayers, layer-2);
-        }
-
-        firstOctave = std::min(firstOctave, 0);
-        CV_Assert( firstOctave >= -1 && actualNLayers <= nOctaveLayers );
-        actualNOctaves = maxOctave - firstOctave + 1;
-    }
-
     Mat base = createInitialImage(image, firstOctave < 0, (float)sigma);
     std::vector<Mat> gpyr;
-    int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
+    int nOctaves = cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
 
     //double t, tf = getTickFrequency();
     //t = (double)getTickCount();
@@ -522,6 +503,30 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     {
         // filter keypoints by mask
         //KeyPointsFilter::runByPixelsMask( keypoints, mask );
+
+        // assign suitable octaves
+        for (size_t i = 0; i < keypoints.size(); i++ )
+        {
+            int octv, layer;
+            KeyPoint& kpt = keypoints[i];
+            float octv_layer = std::log(kpt.size / sigma) / std::log(2.) - 1;
+            if (octv_layer < 0)
+                octv = (int) octv_layer - 1;
+            else
+                octv = (int) octv_layer;
+            layer = cvRound( (octv_layer - octv) * nOctaveLayers );
+            if (octv < firstOctave)
+            {
+                octv = firstOctave;
+                layer = 0;
+            }
+            if (octv >= firstOctave + nOctaves)
+            {
+                octv = firstOctave + nOctaves - 1;
+                layer = nOctaveLayers;
+            }
+            kpt.octave = (layer << 8) | (octv & 255);
+        }
     }
 
     if( _descriptors.needed() )

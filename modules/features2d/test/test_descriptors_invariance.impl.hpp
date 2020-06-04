@@ -12,6 +12,19 @@ typedef tuple<std::string, Ptr<FeatureDetector>, Ptr<DescriptorExtractor>, float
     String_FeatureDetector_DescriptorExtractor_Float_t;
 
 
+static void removeVerySmallKeypoints(vector<KeyPoint>& keypoints)
+{
+    size_t i, j = 0, n = keypoints.size();
+    for( i = 0; i < n; i++ )
+    {
+        if( (keypoints[i].octave & 128) != 0 )
+            ;
+        else
+            keypoints[j++] = keypoints[i];
+    }
+    keypoints.resize(j);
+}
+
 static
 void rotateKeyPoints(const vector<KeyPoint>& src, const Mat& H, float angle, vector<KeyPoint>& dst)
 {
@@ -115,6 +128,7 @@ TEST_P(DescriptorScaleInvariance, scale)
     vector<KeyPoint> keypoints0;
     featureDetector->detect(image0, keypoints0);
     std::cout << "Keypoints: " << keypoints0.size() << std::endl;
+    removeVerySmallKeypoints(keypoints0);
     EXPECT_GE(keypoints0.size(), 15u);
     Mat descriptors0;
     descriptorExtractor->compute(image0, keypoints0, descriptors0);
