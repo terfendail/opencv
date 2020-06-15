@@ -167,9 +167,23 @@ float calcOrientationHist(
     int i, j, k, len = (radius*2+1)*(radius*2+1);
 
     float expf_scale = -1.f/(2.f * sigma * sigma);
+#if CV_SIMD
+    AutoBuffer<float> bufX(len + v_float32::nlanes);
+    AutoBuffer<float> bufY(len + v_float32::nlanes);
+    AutoBuffer<float> bufO(len + v_float32::nlanes);
+    AutoBuffer<float> bufW(len + v_float32::nlanes);
+    AutoBuffer<float> bufT(n+4 + v_float32::nlanes);
+    float *X = alignPtr(bufX.data(), CV_SIMD_WIDTH);
+    float *Y = alignPtr(bufY.data(), CV_SIMD_WIDTH);
+    float *Mag = X;
+    float *Ori = alignPtr(bufO.data(), CV_SIMD_WIDTH);
+    float *W = alignPtr(bufW.data(), CV_SIMD_WIDTH);
+    float *temphist = alignPtr(bufT.data(), CV_SIMD_WIDTH)+2;
+#else
     AutoBuffer<float> buf(len*4 + n+4);
     float *X = buf.data(), *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
     float* temphist = W + len + 2;
+#endif
 
     for( i = 0; i < n; i++ )
         temphist[i] = 0.f;
@@ -210,9 +224,9 @@ float calcOrientationHist(
 
     for( ; k <= len - vecsize; k += vecsize )
     {
-        v_float32 w = vx_load( W + k );
-        v_float32 mag = vx_load( Mag + k );
-        v_float32 ori = vx_load( Ori + k );
+        v_float32 w = vx_load_aligned( W + k );
+        v_float32 mag = vx_load_aligned( Mag + k );
+        v_float32 ori = vx_load_aligned( Ori + k );
         v_int32 bin = v_round( nd360 * ori );
 
         bin = v_select(bin >= __n, bin - __n, bin);
@@ -250,9 +264,13 @@ float calcOrientationHist(
     v_float32 d_6_16 = vx_setall_f32(6.f/16.f);
     for( ; i <= n - v_float32::nlanes; i += v_float32::nlanes )
     {
-        v_float32 _hist = (vx_load(temphist + i-2) + vx_load(temphist + i+2)) * d_1_16 +
-            (vx_load(temphist + i-1) + vx_load(temphist + i+1)) * d_4_16 +
-            vx_load(temphist + i) * d_6_16;
+        v_float32 tn2 = vx_load_aligned(temphist + i-2);
+        v_float32 tn1 = vx_load(temphist + i-1);
+        v_float32 t0 = vx_load(temphist + i);
+        v_float32 t1 = vx_load(temphist + i+1);
+        v_float32 t2 = vx_load(temphist + i+2);
+        v_float32 _hist = v_fma(tn2 + t2, d_1_16,
+            v_fma(tn1 + t1, d_4_16, t0 * d_6_16));
         v_store(hist + i, _hist);
     }
 #endif
