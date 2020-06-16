@@ -11,19 +11,6 @@ namespace opencv_test { namespace {
 typedef tuple<std::string, Ptr<FeatureDetector>, float, float> String_FeatureDetector_Float_Float_t;
 
 
-static void removeVerySmallKeypoints(vector<KeyPoint>& keypoints)
-{
-    size_t i, j = 0, n = keypoints.size();
-    for( i = 0; i < n; i++ )
-    {
-        if( (keypoints[i].octave & 128) != 0 )
-            ;
-        else
-            keypoints[j++] = keypoints[i];
-    }
-    keypoints.resize(j);
-}
-
 static
 void matchKeyPoints(const vector<KeyPoint>& keypoints0, const Mat& H,
                     const vector<KeyPoint>& keypoints1,
@@ -166,7 +153,6 @@ TEST_P(DetectorScaleInvariance, scale)
 {
     vector<KeyPoint> keypoints0;
     featureDetector->detect(image0, keypoints0);
-    removeVerySmallKeypoints(keypoints0);
     EXPECT_GE(keypoints0.size(),  15u);
 
     for(int scaleIdx = 1; scaleIdx <= 3; scaleIdx++)
@@ -177,7 +163,6 @@ TEST_P(DetectorScaleInvariance, scale)
 
         vector<KeyPoint> keypoints1, osiKeypoints1; // osi - original size image
         featureDetector->detect(image1, keypoints1);
-        removeVerySmallKeypoints(keypoints1);
         EXPECT_GE(keypoints1.size(), 15u);
         EXPECT_LE(keypoints1.size(), keypoints0.size()) << "Strange behavior of the detector. "
                   "It gives more points count in an image of the smaller size.";

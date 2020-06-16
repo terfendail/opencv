@@ -12,17 +12,23 @@ typedef tuple<std::string, Ptr<FeatureDetector>, Ptr<DescriptorExtractor>, float
     String_FeatureDetector_DescriptorExtractor_Float_t;
 
 
-static void removeVerySmallKeypoints(vector<KeyPoint>& keypoints)
+static void SetSuitableSIFTOctave(vector<KeyPoint>& keypoints,
+                                    int firstOctave = -1, int nOctaveLayers = 3, double sigma = 1.6)
 {
-    size_t i, j = 0, n = keypoints.size();
-    for( i = 0; i < n; i++ )
+    for (size_t i = 0; i < keypoints.size(); i++ )
     {
-        if( (keypoints[i].octave & 128) != 0 )
-            ;
-        else
-            keypoints[j++] = keypoints[i];
+        int octv, layer;
+        KeyPoint& kpt = keypoints[i];
+        float octv_layer = std::log(kpt.size / sigma) / std::log(2.) - 1;
+        octv = cvFloor(octv_layer);
+        layer = cvRound( (octv_layer - octv) * nOctaveLayers );
+        if (octv < firstOctave)
+        {
+            octv = firstOctave;
+            layer = 0;
+        }
+        kpt.octave = (layer << 8) | (octv & 255);
     }
-    keypoints.resize(j);
 }
 
 static
@@ -128,7 +134,6 @@ TEST_P(DescriptorScaleInvariance, scale)
     vector<KeyPoint> keypoints0;
     featureDetector->detect(image0, keypoints0);
     std::cout << "Keypoints: " << keypoints0.size() << std::endl;
-    removeVerySmallKeypoints(keypoints0);
     EXPECT_GE(keypoints0.size(), 15u);
     Mat descriptors0;
     descriptorExtractor->compute(image0, keypoints0, descriptors0);
@@ -143,6 +148,10 @@ TEST_P(DescriptorScaleInvariance, scale)
 
         vector<KeyPoint> keypoints1;
         scaleKeyPoints(keypoints0, keypoints1, 1.0f/scale);
+        if (featureDetector->getDefaultName() == "Feature2D.SIFT")
+        {
+            SetSuitableSIFTOctave(keypoints1);
+        }
         Mat descriptors1;
         descriptorExtractor->compute(image1, keypoints1, descriptors1);
 
