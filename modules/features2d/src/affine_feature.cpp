@@ -99,14 +99,18 @@ AffineFeature_Impl::AffineFeature_Impl(const Ptr<FeatureDetector>& backend,
         rolls_.push_back(0);
         i++;
     }
+    float tilt = 1;
     for( ; i <= maxTilt_; i++ )
     {
-        float tilt = std::pow(tiltStep_, i);
+        tilt *= tiltStep_;
         float rotateStep = rotateStepBase_ / tilt;
-        for( float roll = 0; roll < 180; roll += rotateStep )
+        int rollN = cvFloor(180.0f / rotateStep);
+        if( rollN * rotateStep == 180.0f )
+            rollN--;
+        for( int j = 0; j <= rollN; j++ )
         {
             tilts_.push_back(tilt);
-            rolls_.push_back(roll);
+            rolls_.push_back(rotateStep * j);
         }
     }
 }
@@ -117,7 +121,7 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
 {
     int h = image.size().height;
     int w = image.size().width;
-    // Mat rotImage;
+    Mat rotImage;
 
     Mat mask0;
     if( mask.empty() )
@@ -128,8 +132,7 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
                    0,1,0);
 
     if( phi == 0 )
-        warpedImage = image;
-        // rotImage = image;
+        image.copyTo(rotImage);
     else
     {
         phi = float(phi / 180 * CV_PI);
@@ -137,31 +140,30 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
         float c = cos(phi);
         Matx22f A(c, -s, s, c);
         Matx<float, 4, 2> corners(0,0, w,0, w,h, 0,h);
-        Matx<float, 4, 2> tcorners = corners * A.t();
+        Matx<float, 4, 2> tf = corners * A.t();
+        Matx<int, 4, 2> tcorners(
+            (int)tf(0,0),(int)tf(0,1),(int)tf(1,0),(int)tf(1,1),
+            (int)tf(2,0),(int)tf(2,1),(int)tf(3,0),(int)tf(3,1)
+        );
         Rect rect = boundingRect(tcorners);
         h = rect.height; w = rect.width;
         pose = Matx23f(c, -s, -rect.x,
                        s,  c, -rect.y);
-        // warpAffine(image, rotImage, pose, Size(w, h), INTER_LINEAR, BORDER_REPLICATE);
-        warpAffine(image, warpedImage, pose, Size(w, h), INTER_LINEAR, BORDER_REPLICATE);
+        warpAffine(image, rotImage, pose, Size(w, h), INTER_LINEAR, BORDER_REPLICATE);
     }
-    // if( tilt == 1 )
-    //     warpedImage = rotImage;
-    // else
-    if( tilt != 1.0f )
+    if( tilt == 1 )
+        warpedImage = rotImage;
+    else
     {
-        Mat im;
-        warpedImage.copyTo(im);
         float s = 0.8f * sqrt(tilt * tilt - 1);
-        // GaussianBlur(rotImage, warpedImage, Size(0, 0), s, 0.01);
-        GaussianBlur(im, im, Size(0, 0), s, 0.01);
-        resize(im, warpedImage, Size(0, 0), 1.0/tilt, 1.0, INTER_NEAREST);
+        GaussianBlur(rotImage, rotImage, Size(0, 0), s, 0.01);
+        resize(rotImage, warpedImage, Size(0, 0), 1.0/tilt, 1.0, INTER_NEAREST);
         pose(0, 0) /= tilt;
         pose(0, 1) /= tilt;
         pose(0, 2) /= tilt;
     }
     if( phi != 0 || tilt != 1 )
-        warpAffine(mask0, warpedMask, pose, Size(w, h), INTER_NEAREST);
+        warpAffine(mask0, warpedMask, pose, warpedImage.size(), INTER_NEAREST);
 }
 
 void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
@@ -186,6 +188,8 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
         descriptors = _descriptors.getMat();
     }
 
+    std::vector< std::vector<KeyPoint> > keypointsCollection(tilts_.size());
+    std::vector< Mat > descriptorCollection(tilts_.size());
     for( size_t i = 0; i < tilts_.size(); i++ )
     {
         Mat warpedImage, warpedMask;
@@ -210,25 +214,35 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
         backend_->detectAndCompute(warpedImage, warpedMask, wKeypoints, wDescriptors, useProvidedKeypoints);
         if( do_keypoints )
         {
-            KeyPointsFilter::runByPixelsMask( wKeypoints, warpedMask );
+            // KeyPointsFilter::runByPixelsMask( wKeypoints, warpedMask );
             std::vector<Point2f> pts_, pts;
             KeyPoint::convert(wKeypoints, pts_);
             transform(pts_, pts, invPose);
+
+            keypointsCollection[i].resize(wKeypoints.size());
             for( size_t wi = 0; wi < wKeypoints.size(); wi++ )
             {
-                keypoints.push_back(wKeypoints[wi]);
-                keypoints[wi].pt = pts[wi];
+                keypointsCollection[i][wi] = wKeypoints[wi];
+                keypointsCollection[i][wi].pt = pts[wi];
             }
         }
         if( do_descriptors )
-        {
-            int begin = descriptors.rows;
-            int end = keypoints.size();
-            int width = descriptors.cols;
-            descriptors.resize(end);
+            wDescriptors.copyTo(descriptorCollection[i]);
+    }
 
-            Mat roi(descriptors, Rect(0, begin, width, end-begin));
-            wDescriptors.copyTo(roi);
+    if( do_keypoints )
+        for( auto& keys : keypointsCollection )
+            keypoints.insert(keypoints.end(), keys.begin(), keys.end());
+
+    if( do_descriptors )
+    {
+        descriptors.resize(keypoints.size());
+        int iter = 0;
+        for( auto& descs : descriptorCollection )
+        {
+            Mat roi(descriptors, Rect(0, iter, descriptors.cols, descs.rows));
+            descs.copyTo(roi);
+            iter += descs.rows;
         }
     }
 }
