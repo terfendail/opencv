@@ -140,11 +140,9 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
         float c = cos(phi);
         Matx22f A(c, -s, s, c);
         Matx<float, 4, 2> corners(0,0, w,0, w,h, 0,h);
-        Matx<float, 4, 2> tf = corners * A.t();
-        Matx<int, 4, 2> tcorners(
-            (int)tf(0,0),(int)tf(0,1),(int)tf(1,0),(int)tf(1,1),
-            (int)tf(2,0),(int)tf(2,1),(int)tf(3,0),(int)tf(3,1)
-        );
+        Mat tf(corners * A.t());
+        Mat tcorners;
+        tf.convertTo(tcorners, CV_32S);
         Rect rect = boundingRect(tcorners);
         h = rect.height; w = rect.width;
         pose = Matx23f(c, -s, -rect.x,
