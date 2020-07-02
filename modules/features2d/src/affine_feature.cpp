@@ -48,7 +48,7 @@ class AffineFeature_Impl CV_FINAL : public AffineFeature
 {
 public:
     explicit AffineFeature_Impl(const Ptr<Feature2D>& backend,
-            unsigned int maxTilt, unsigned int minTilt);
+            int maxTilt, int minTilt);
 
     int descriptorType() const CV_OVERRIDE
     {
@@ -63,15 +63,21 @@ public:
     void detectAndCompute(InputArray image, InputArray mask, std::vector<KeyPoint>& keypoints,
             OutputArray descriptors, bool useProvidedKeypoints=false) CV_OVERRIDE;
 
+    void setViewParams(const std::vector<float>& tilts, const std::vector<float>& rolls) CV_OVERRIDE;
+    void getViewParams(std::vector<float>& tilts, std::vector<float>& rolls) const CV_OVERRIDE;
+
 protected:
     void affineSkew(float tilt, float roll,
             const Mat& image, const Mat& mask,
             Mat& warpedImage, Mat& warpedMask,
             Matx23f& pose) const;
 
+    void splitKeypointsByView(const std::vector<KeyPoint>& keypoints_,
+            std::vector< std::vector<KeyPoint> >& keypointsByView) const;
+
     const Ptr<Feature2D> backend_;
-    unsigned int maxTilt_;
-    unsigned int minTilt_;
+    int maxTilt_;
+    int minTilt_;
 
     // Tilt sampling step \delta_t in Algorithm 1 in the paper.
     float tiltStep_ = 1.4142135623730951f;
@@ -89,17 +95,17 @@ private:
 };
 
 AffineFeature_Impl::AffineFeature_Impl(const Ptr<FeatureDetector>& backend,
-        unsigned int maxTilt, unsigned int minTilt)
+        int maxTilt, int minTilt)
     : backend_(backend), maxTilt_(maxTilt), minTilt_(minTilt)
 {
-    unsigned int i = minTilt_;
+    int i = minTilt_;
     if( i == 0 )
     {
         tilts_.push_back(1);
         rolls_.push_back(0);
         i++;
     }
-    float tilt = 1;
+    double tilt = 1;
     for( ; i <= maxTilt_; i++ )
     {
         tilt *= tiltStep_;
@@ -113,6 +119,21 @@ AffineFeature_Impl::AffineFeature_Impl(const Ptr<FeatureDetector>& backend,
             rolls_.push_back(rotateStep * j);
         }
     }
+}
+
+void AffineFeature_Impl::setViewParams(const std::vector<float>& tilts,
+        const std::vector<float>& rolls)
+{
+    CV_Assert(tilts.size() == rolls.size());
+    tilts_ = tilts;
+    rolls_ = rolls;
+}
+
+void AffineFeature_Impl::getViewParams(std::vector<float>& tilts,
+        std::vector<float>& rolls) const
+{
+    tilts = tilts_;
+    rolls = rolls_;
 }
 
 void AffineFeature_Impl::affineSkew(float tilt, float phi,
@@ -135,9 +156,9 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
         image.copyTo(rotImage);
     else
     {
-        phi = float(phi / 180 * CV_PI);
-        float s = sin(phi);
-        float c = cos(phi);
+        phi = phi * CV_PI / 180;
+        float s = std::sin(phi);
+        float c = std::cos(phi);
         Matx22f A(c, -s, s, c);
         Matx<float, 4, 2> corners(0,0, w,0, w,h, 0,h);
         Mat tf(corners * A.t());
@@ -153,7 +174,7 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
         warpedImage = rotImage;
     else
     {
-        float s = 0.8f * sqrt(tilt * tilt - 1);
+        float s = 0.8 * sqrt(tilt * tilt - 1);
         GaussianBlur(rotImage, rotImage, Size(0, 0), s, 0.01);
         resize(rotImage, warpedImage, Size(0, 0), 1.0/tilt, 1.0, INTER_NEAREST);
         pose(0, 0) /= tilt;
@@ -162,6 +183,17 @@ void AffineFeature_Impl::affineSkew(float tilt, float phi,
     }
     if( phi != 0 || tilt != 1 )
         warpAffine(mask0, warpedMask, pose, warpedImage.size(), INTER_NEAREST);
+}
+
+void AffineFeature_Impl::splitKeypointsByView(const std::vector<KeyPoint>& keypoints_,
+        std::vector< std::vector<KeyPoint> >& keypointsByView) const
+{
+    for( size_t i = 0; i < keypoints_.size(); i++ )
+    {
+        const KeyPoint& kp = keypoints_[i];
+        CV_Assert( kp.class_id >= 0 && kp.class_id < (int)tilts_.size() );
+        keypointsByView[kp.class_id].push_back(kp);
+    }
 }
 
 void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
@@ -179,15 +211,14 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     if( (!do_keypoints && !do_descriptors) || _image.empty() )
         return;
 
-    if( do_keypoints ) keypoints.clear();
-    if( do_descriptors )
-    {
-        _descriptors.create(0, backend_->descriptorSize(), backend_->descriptorType());
-        descriptors = _descriptors.getMat();
-    }
-
     std::vector< std::vector<KeyPoint> > keypointsCollection(tilts_.size());
     std::vector< Mat > descriptorCollection(tilts_.size());
+
+    if( do_keypoints )
+        keypoints.clear();
+    else
+        splitKeypointsByView(keypoints, keypointsCollection);
+
     for( size_t i = 0; i < tilts_.size(); i++ )
     {
         Mat warpedImage, warpedMask;
@@ -199,13 +230,14 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
         Mat wDescriptors;
         if( !do_keypoints )
         {
+            const std::vector<KeyPoint>& keypointsInView = keypointsCollection[i];
             std::vector<Point2f> pts_, pts;
-            KeyPoint::convert(keypoints, pts_);
+            KeyPoint::convert(keypointsInView, pts_);
             transform(pts_, pts, pose);
-            wKeypoints.resize(keypoints.size());
+            wKeypoints.resize(keypointsInView.size());
             for( size_t wi = 0; wi < wKeypoints.size(); wi++ )
             {
-                wKeypoints[wi] = keypoints[wi];
+                wKeypoints[wi] = keypointsInView[wi];
                 wKeypoints[wi].pt = pts[wi];
             }
         }
@@ -222,6 +254,7 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
             {
                 keypointsCollection[i][wi] = wKeypoints[wi];
                 keypointsCollection[i][wi].pt = pts[wi];
+                keypointsCollection[i][wi].class_id = i;
             }
         }
         if( do_descriptors )
@@ -234,7 +267,8 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
 
     if( do_descriptors )
     {
-        descriptors.resize(keypoints.size());
+        _descriptors.create(keypoints.size(), backend_->descriptorSize(), backend_->descriptorType());
+        descriptors = _descriptors.getMat();
         int iter = 0;
         for( auto& descs : descriptorCollection )
         {
@@ -247,7 +281,7 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
 
 
 Ptr<AffineFeature> AffineFeature::create(const Ptr<Feature2D>& backend,
-                                         unsigned int maxTilt, unsigned int minTilt)
+                                         int maxTilt, int minTilt)
 {
     CV_Assert(minTilt < maxTilt);
     return makePtr<AffineFeature_Impl>(backend, maxTilt, minTilt);

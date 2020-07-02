@@ -18,14 +18,13 @@ bool isSimilarKeypoints( const KeyPoint& p1, const KeyPoint& p2 )
             fabs(p1.size - p2.size) < maxSizeDif &&
             abs(p1.angle - p2.angle) < maxAngleDif &&
             abs(p1.response - p2.response) < maxResponseDif &&
-            p1.octave == p2.octave &&
-            p1.class_id == p2.class_id );
+            (p1.octave & 0xffff) == (p2.octave & 0xffff)     // do not care about sublayers, class_id
+            );
 }
 
 TEST(Features2d_AFFINE_FEATURE, regression_py)
 {
     const float badCountsRatio = 0.01f;
-    const float maxBadPointsRatio = 0.03f;
     const float badDescriptorDist = 1.0f;
     const float maxBadDescriptorRatio = 0.05f;
 
@@ -34,14 +33,9 @@ TEST(Features2d_AFFINE_FEATURE, regression_py)
 
     Mat gray;
     cvtColor(image, gray, COLOR_BGR2GRAY);
-    Ptr<Feature2D> ext = AffineFeature::create(SIFT::create());
-    vector<KeyPoint> calcKeypoints;
-    Mat calcDescriptors;
-    ext->detectAndCompute(gray, Mat(), calcKeypoints, calcDescriptors, false);
 
-    Mat mpt, msize, mangle, mresponse, moctave;
-    vector<float> pt, size, angle, response;
-    vector<int> octave;
+    Mat mpt, msize, mangle, mresponse, moctave, mparams;
+    vector<float> tilts, rolls;
     vector<KeyPoint> validKeypoints;
     Mat validDescriptors;
     {
@@ -52,28 +46,35 @@ TEST(Features2d_AFFINE_FEATURE, regression_py)
         ASSERT_TRUE(fs.isOpened()) << xml;
 
         fs["keypoints_pt"] >> mpt;
+        ASSERT_EQ(mpt.type(), CV_64F);
         fs["keypoints_size"] >> msize;
+        ASSERT_EQ(msize.type(), CV_64F);
         fs["keypoints_angle"] >> mangle;
+        ASSERT_EQ(mangle.type(), CV_64F);
         fs["keypoints_response"] >> mresponse;
+        ASSERT_EQ(mresponse.type(), CV_64F);
         fs["keypoints_octave"] >> moctave;
-        fs.release();
+        ASSERT_EQ(moctave.type(), CV_32S);
+        fs["params"] >> mparams;
+        ASSERT_EQ(mparams.type(), CV_64F);
 
-        mpt.reshape(0, 1).copyTo(pt);
-        msize.reshape(0, 1).copyTo(size);
-        mangle.reshape(0, 1).copyTo(angle);
-        mresponse.reshape(0, 1).copyTo(response);
-        moctave.reshape(0, 1).copyTo(octave);
-
-        validKeypoints.resize(pt.size());
-        for( size_t i = 0; i < pt.size(); i++ )
+        validKeypoints.resize(mpt.rows);
+        std::cout << msize.rows << "x" << msize.cols << std::endl;
+        for( size_t i = 0; i < validKeypoints.size(); i++ )
         {
-            validKeypoints[i].pt.x = pt.at(i*2);
-            validKeypoints[i].pt.y = pt.at(i*2 + 1);
-            validKeypoints[i].size = size.at(i);
-            validKeypoints[i].angle = angle.at(i);
-            validKeypoints[i].response = response.at(i);
-            validKeypoints[i].octave = octave.at(i);
+            validKeypoints[i].pt.x = mpt.at<double>(i,0);
+            validKeypoints[i].pt.y = mpt.at<double>(i,1);
+            validKeypoints[i].size = msize.at<double>(i,0);
+            validKeypoints[i].angle = mangle.at<double>(i,0);
+            validKeypoints[i].response = mresponse.at<double>(i,0);
+            validKeypoints[i].octave = moctave.at<int>(i,0);
         }
+        for( int i = 0; i < mparams.rows; i++ )
+        {
+            tilts.push_back(mparams.at<double>(i, 0));
+            rolls.push_back(mparams.at<double>(i, 1));
+        }
+        fs.release();
     }
     {
         // read descriptors
@@ -86,19 +87,27 @@ TEST(Features2d_AFFINE_FEATURE, regression_py)
         fs.release();
     }
 
+    // calculate
+    Ptr<AffineFeature> ext = AffineFeature::create(SIFT::create());
+    ext->setViewParams(tilts, rolls);
+    vector<KeyPoint> calcKeypoints;
+    Mat calcDescriptors;
+    ext->detectAndCompute(gray, Mat(), calcKeypoints, calcDescriptors, false);
+
     // compare keypoints
+    std::cout << validKeypoints.size() << " " << calcKeypoints.size() << std::endl;
     float countRatio = (float)validKeypoints.size() / (float)calcKeypoints.size();
     ASSERT_LT(countRatio, 1 + badCountsRatio) << "Bad keypoints count ratio.";
     ASSERT_GT(countRatio, 1 - badCountsRatio) << "Bad keypoints count ratio.";
 
-    int badPointCount = 0;
+    int badPointCount = 0, commonPointCount = max((int)validKeypoints.size(), (int)calcKeypoints.size());
     vector<size_t> correspond(validKeypoints.size());
     for( size_t v = 0; v < validKeypoints.size(); v++ )
     {
         int nearestIdx = -1;
         float minDist = std::numeric_limits<float>::max();
 
-        for( size_t c = 0; c < calcKeypoints.size(); v++ )
+        for( size_t c = 0; c < calcKeypoints.size(); c++ )
         {
             float curDist = (float)cv::norm( calcKeypoints[c].pt - validKeypoints[v].pt );
             if( curDist < minDist )
@@ -112,14 +121,21 @@ TEST(Features2d_AFFINE_FEATURE, regression_py)
         if( !isSimilarKeypoints( validKeypoints[v], calcKeypoints[nearestIdx] ) )
             badPointCount++;
     }
-    float badPointRatio = (float)badPointCount / (float)validKeypoints.size();
-    ASSERT_LT( badPointRatio, maxBadPointsRatio ) << "Too many keypoints mismatched.";
+    ASSERT_LT( badPointCount, 0.9 * commonPointCount ) << "Bad accuracy!";
 
     // Compare descriptors
     int dim = validDescriptors.cols;
-    CV_Assert( CV_32F == validDescriptors.type() );
+    ASSERT_EQ( CV_32F, validDescriptors.type() );
+    std::cout << validDescriptors.size() << std::endl;
+    ASSERT_EQ( CV_32F, calcDescriptors.type() );
+    std::cout << calcDescriptors.size() << std::endl;
     int badDescriptorCount = 0;
     L1<float> distance;
+    for(int i=0; i<dim; i++) std::cout << validDescriptors.ptr<float>(0)[i] <<" ";
+    std::cout << std::endl;
+    for(int i=0; i<dim; i++) std::cout << calcDescriptors.ptr<float>(0)[i] << " ";
+    std::cout << std::endl;
+
     for( size_t v = 0; v < validKeypoints.size(); v++ )
     {
         size_t c = correspond[v];

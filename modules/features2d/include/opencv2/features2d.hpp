@@ -257,7 +257,10 @@ public:
     @param minTilt The lowest power index of tilt factor. 0 is used in the paper.
     */
     CV_WRAP static Ptr<AffineFeature> create(const Ptr<Feature2D>& backend,
-        unsigned int maxTilt = 5, unsigned int minTilt = 0);
+        int maxTilt = 5, int minTilt = 0);
+
+    CV_WRAP virtual void setViewParams(const std::vector<float>& tilts, const std::vector<float>& rolls) = 0;
+    CV_WRAP virtual void getViewParams(std::vector<float>& tilts, std::vector<float>& rolls) const = 0;
     CV_WRAP virtual String getDefaultName() const CV_OVERRIDE;
 };
 
