@@ -67,10 +67,10 @@ public:
     void getViewParams(std::vector<float>& tilts, std::vector<float>& rolls) const CV_OVERRIDE;
 
 protected:
-    void affineSkew(float tilt, float roll,
-            const Mat& image, const Mat& mask,
-            Mat& warpedImage, Mat& warpedMask,
-            Matx23f& pose) const;
+    // void affineSkew(float tilt, float roll,
+    //         const Mat& image, const Mat& mask,
+    //         Mat& warpedImage, Mat& warpedMask,
+    //         Matx23f& pose) const;
 
     void splitKeypointsByView(const std::vector<KeyPoint>& keypoints_,
             std::vector< std::vector<KeyPoint> >& keypointsByView) const;
@@ -136,9 +136,9 @@ void AffineFeature_Impl::getViewParams(std::vector<float>& tilts,
     rolls = rolls_;
 }
 
-void AffineFeature_Impl::affineSkew(float tilt, float phi,
+static void affineSkew(float tilt, float phi,
         const Mat& image, const Mat& mask,
-        Mat& warpedImage, Mat& warpedMask, Matx23f& pose) const
+        Mat& warpedImage, Mat& warpedMask, Matx23f& pose)
 {
     int h = image.size().height;
     int w = image.size().width;
@@ -196,6 +196,90 @@ void AffineFeature_Impl::splitKeypointsByView(const std::vector<KeyPoint>& keypo
     }
 }
 
+class skewedDetectAndCompute : public ParallelLoopBody
+{
+public:
+    skewedDetectAndCompute(
+        const std::vector<float>& _tilts,
+        const std::vector<float>& _rolls,
+        std::vector<std::vector<KeyPoint>>& _keypointsCollection,
+        std::vector<Mat>& _descriptorCollection,
+        const Mat& _image,
+        const Mat& _mask,
+        const bool _do_keypoints,
+        const bool _do_descriptors,
+        const Ptr<Feature2D>& _backend)
+        : tilts(_tilts),
+          rolls(_rolls),
+          keypointsCollection(_keypointsCollection),
+          descriptorCollection(_descriptorCollection),
+          image(_image),
+          mask(_mask),
+          do_keypoints(_do_keypoints),
+          do_descriptors(_do_descriptors),
+          backend(_backend) {}
+
+    void operator()( const cv::Range& range ) const CV_OVERRIDE
+    {
+        CV_TRACE_FUNCTION();
+
+        const int begin = range.start;
+        const int end = range.end;
+
+        for( int a = begin; a < end; a++ )
+        {
+            Mat warpedImage, warpedMask;
+            Matx23f pose, invPose;
+            affineSkew(tilts[a], rolls[a], image, mask, warpedImage, warpedMask, pose);
+            invertAffineTransform(pose, invPose);
+
+            std::vector<KeyPoint> wKeypoints;
+            Mat wDescriptors;
+            if( !do_keypoints )
+            {
+                const std::vector<KeyPoint>& keypointsInView = keypointsCollection[a];
+                std::vector<Point2f> pts_, pts;
+                KeyPoint::convert(keypointsInView, pts_);
+                transform(pts_, pts, pose);
+                wKeypoints.resize(keypointsInView.size());
+                for( size_t wi = 0; wi < wKeypoints.size(); wi++ )
+                {
+                    wKeypoints[wi] = keypointsInView[wi];
+                    wKeypoints[wi].pt = pts[wi];
+                }
+            }
+            backend->detectAndCompute(warpedImage, warpedMask, wKeypoints, wDescriptors, !do_keypoints);
+            if( do_keypoints )
+            {
+                // KeyPointsFilter::runByPixelsMask( wKeypoints, warpedMask );
+                std::vector<Point2f> pts_, pts;
+                KeyPoint::convert(wKeypoints, pts_);
+                transform(pts_, pts, invPose);
+
+                keypointsCollection[a].resize(wKeypoints.size());
+                for( size_t wi = 0; wi < wKeypoints.size(); wi++ )
+                {
+                    keypointsCollection[a][wi] = wKeypoints[wi];
+                    keypointsCollection[a][wi].pt = pts[wi];
+                    keypointsCollection[a][wi].class_id = a;
+                }
+            }
+            if( do_descriptors )
+                wDescriptors.copyTo(descriptorCollection[a]);
+        }
+    }
+private:
+    const std::vector<float>& tilts;
+    const std::vector<float>& rolls;
+    std::vector<std::vector<KeyPoint>>& keypointsCollection;
+    std::vector<Mat>& descriptorCollection;
+    const Mat& image;
+    const Mat& mask;
+    const bool do_keypoints;
+    const bool do_descriptors;
+    const Ptr<Feature2D>& backend;
+};
+
 void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
         std::vector<KeyPoint>& keypoints,
         OutputArray _descriptors,
@@ -219,47 +303,8 @@ void AffineFeature_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     else
         splitKeypointsByView(keypoints, keypointsCollection);
 
-    for( size_t i = 0; i < tilts_.size(); i++ )
-    {
-        Mat warpedImage, warpedMask;
-        Matx23f pose, invPose;
-        affineSkew(tilts_[i], rolls_[i], image, mask, warpedImage, warpedMask, pose);
-        invertAffineTransform(pose, invPose);
-
-        std::vector<KeyPoint> wKeypoints;
-        Mat wDescriptors;
-        if( !do_keypoints )
-        {
-            const std::vector<KeyPoint>& keypointsInView = keypointsCollection[i];
-            std::vector<Point2f> pts_, pts;
-            KeyPoint::convert(keypointsInView, pts_);
-            transform(pts_, pts, pose);
-            wKeypoints.resize(keypointsInView.size());
-            for( size_t wi = 0; wi < wKeypoints.size(); wi++ )
-            {
-                wKeypoints[wi] = keypointsInView[wi];
-                wKeypoints[wi].pt = pts[wi];
-            }
-        }
-        backend_->detectAndCompute(warpedImage, warpedMask, wKeypoints, wDescriptors, useProvidedKeypoints);
-        if( do_keypoints )
-        {
-            // KeyPointsFilter::runByPixelsMask( wKeypoints, warpedMask );
-            std::vector<Point2f> pts_, pts;
-            KeyPoint::convert(wKeypoints, pts_);
-            transform(pts_, pts, invPose);
-
-            keypointsCollection[i].resize(wKeypoints.size());
-            for( size_t wi = 0; wi < wKeypoints.size(); wi++ )
-            {
-                keypointsCollection[i][wi] = wKeypoints[wi];
-                keypointsCollection[i][wi].pt = pts[wi];
-                keypointsCollection[i][wi].class_id = i;
-            }
-        }
-        if( do_descriptors )
-            wDescriptors.copyTo(descriptorCollection[i]);
-    }
+    parallel_for_(Range(0, tilts_.size()), skewedDetectAndCompute(tilts_, rolls_, keypointsCollection, descriptorCollection,
+        image, mask, do_keypoints, do_descriptors, backend_));
 
     if( do_keypoints )
         for( auto& keys : keypointsCollection )
