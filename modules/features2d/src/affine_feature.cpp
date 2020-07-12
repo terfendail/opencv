@@ -136,55 +136,6 @@ void AffineFeature_Impl::getViewParams(std::vector<float>& tilts,
     rolls = rolls_;
 }
 
-static void affineSkew(float tilt, float phi,
-        const Mat& image, const Mat& mask,
-        Mat& warpedImage, Mat& warpedMask, Matx23f& pose)
-{
-    int h = image.size().height;
-    int w = image.size().width;
-    Mat rotImage;
-
-    Mat mask0;
-    if( mask.empty() )
-        mask0 = Mat::ones(h, w, CV_8UC1)*255;
-    else
-        mask0 = mask;
-    pose = Matx23f(1,0,0,
-                   0,1,0);
-
-    if( phi == 0 )
-        image.copyTo(rotImage);
-    else
-    {
-        phi = phi * CV_PI / 180;
-        float s = std::sin(phi);
-        float c = std::cos(phi);
-        Matx22f A(c, -s, s, c);
-        Matx<float, 4, 2> corners(0,0, w,0, w,h, 0,h);
-        Mat tf(corners * A.t());
-        Mat tcorners;
-        tf.convertTo(tcorners, CV_32S);
-        Rect rect = boundingRect(tcorners);
-        h = rect.height; w = rect.width;
-        pose = Matx23f(c, -s, -rect.x,
-                       s,  c, -rect.y);
-        warpAffine(image, rotImage, pose, Size(w, h), INTER_LINEAR, BORDER_REPLICATE);
-    }
-    if( tilt == 1 )
-        warpedImage = rotImage;
-    else
-    {
-        float s = 0.8 * sqrt(tilt * tilt - 1);
-        GaussianBlur(rotImage, rotImage, Size(0, 0), s, 0.01);
-        resize(rotImage, warpedImage, Size(0, 0), 1.0/tilt, 1.0, INTER_NEAREST);
-        pose(0, 0) /= tilt;
-        pose(0, 1) /= tilt;
-        pose(0, 2) /= tilt;
-    }
-    if( phi != 0 || tilt != 1 )
-        warpAffine(mask0, warpedMask, pose, warpedImage.size(), INTER_NEAREST);
-}
-
 void AffineFeature_Impl::splitKeypointsByView(const std::vector<KeyPoint>& keypoints_,
         std::vector< std::vector<KeyPoint> >& keypointsByView) const
 {
@@ -230,7 +181,7 @@ public:
         {
             Mat warpedImage, warpedMask;
             Matx23f pose, invPose;
-            affineSkew(tilts[a], rolls[a], image, mask, warpedImage, warpedMask, pose);
+            affineSkew(tilts[a], rolls[a], warpedImage, warpedMask, pose);
             invertAffineTransform(pose, invPose);
 
             std::vector<KeyPoint> wKeypoints;
@@ -269,6 +220,55 @@ public:
         }
     }
 private:
+    void affineSkew(float tilt, float phi,
+            Mat& warpedImage, Mat& warpedMask, Matx23f& pose) const
+    {
+        int h = image.size().height;
+        int w = image.size().width;
+        Mat rotImage;
+
+        Mat mask0;
+        if( mask.empty() )
+            mask0 = Mat::ones(h, w, CV_8UC1)*255;
+        else
+            mask0 = mask;
+        pose = Matx23f(1,0,0,
+                    0,1,0);
+
+        if( phi == 0 )
+            image.copyTo(rotImage);
+        else
+        {
+            phi = phi * CV_PI / 180;
+            float s = std::sin(phi);
+            float c = std::cos(phi);
+            Matx22f A(c, -s, s, c);
+            Matx<float, 4, 2> corners(0,0, w,0, w,h, 0,h);
+            Mat tf(corners * A.t());
+            Mat tcorners;
+            tf.convertTo(tcorners, CV_32S);
+            Rect rect = boundingRect(tcorners);
+            h = rect.height; w = rect.width;
+            pose = Matx23f(c, -s, -rect.x,
+                        s,  c, -rect.y);
+            warpAffine(image, rotImage, pose, Size(w, h), INTER_LINEAR, BORDER_REPLICATE);
+        }
+        if( tilt == 1 )
+            warpedImage = rotImage;
+        else
+        {
+            float s = 0.8 * sqrt(tilt * tilt - 1);
+            GaussianBlur(rotImage, rotImage, Size(0, 0), s, 0.01);
+            resize(rotImage, warpedImage, Size(0, 0), 1.0/tilt, 1.0, INTER_NEAREST);
+            pose(0, 0) /= tilt;
+            pose(0, 1) /= tilt;
+            pose(0, 2) /= tilt;
+        }
+        if( phi != 0 || tilt != 1 )
+            warpAffine(mask0, warpedMask, pose, warpedImage.size(), INTER_NEAREST);
+    }
+
+
     const std::vector<float>& tilts;
     const std::vector<float>& rolls;
     std::vector<std::vector<KeyPoint>>& keypointsCollection;
