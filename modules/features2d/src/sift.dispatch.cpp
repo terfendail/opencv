@@ -88,7 +88,7 @@ class SIFT_Impl : public SIFT
 public:
     explicit SIFT_Impl( int nfeatures = 0, int nOctaveLayers = 3,
                           double contrastThreshold = 0.04, double edgeThreshold = 10,
-                          double sigma = 1.6);
+                          double sigma = 1.6, bool useUcharDescriptors = false );
 
     //! returns the descriptor size in floats (128)
     int descriptorSize() const CV_OVERRIDE;
@@ -117,13 +117,14 @@ protected:
     CV_PROP_RW double contrastThreshold;
     CV_PROP_RW double edgeThreshold;
     CV_PROP_RW double sigma;
+    CV_PROP_RW bool useUcharDescriptors;
 };
 
 Ptr<SIFT> SIFT::create( int _nfeatures, int _nOctaveLayers,
-                     double _contrastThreshold, double _edgeThreshold, double _sigma )
+                     double _contrastThreshold, double _edgeThreshold, double _sigma, bool _useUcharDescriptors )
 {
     CV_TRACE_FUNCTION();
-    return makePtr<SIFT_Impl>(_nfeatures, _nOctaveLayers, _contrastThreshold, _edgeThreshold, _sigma);
+    return makePtr<SIFT_Impl>(_nfeatures, _nOctaveLayers, _contrastThreshold, _edgeThreshold, _sigma, _useUcharDescriptors);
 }
 
 String SIFT::getDefaultName() const
@@ -429,9 +430,9 @@ static void calcDescriptors(const std::vector<Mat>& gpyr, const std::vector<KeyP
 //////////////////////////////////////////////////////////////////////////////////////////
 
 SIFT_Impl::SIFT_Impl( int _nfeatures, int _nOctaveLayers,
-           double _contrastThreshold, double _edgeThreshold, double _sigma )
+           double _contrastThreshold, double _edgeThreshold, double _sigma, bool _useUcharDescriptors )
     : nfeatures(_nfeatures), nOctaveLayers(_nOctaveLayers),
-    contrastThreshold(_contrastThreshold), edgeThreshold(_edgeThreshold), sigma(_sigma)
+    contrastThreshold(_contrastThreshold), edgeThreshold(_edgeThreshold), sigma(_sigma), useUcharDescriptors(_useUcharDescriptors)
 {
 }
 
@@ -442,7 +443,10 @@ int SIFT_Impl::descriptorSize() const
 
 int SIFT_Impl::descriptorType() const
 {
-    return CV_32F;
+    if( useUcharDescriptors )
+        return CV_8U;
+    else
+        return CV_32F;
 }
 
 int SIFT_Impl::defaultNorm() const
@@ -533,10 +537,20 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     {
         //t = (double)getTickCount();
         int dsize = descriptorSize();
-        _descriptors.create((int)keypoints.size(), dsize, CV_32F);
-        Mat descriptors = _descriptors.getMat();
-
-        calcDescriptors(gpyr, keypoints, descriptors, nOctaveLayers, firstOctave);
+        if( useUcharDescriptors )
+        {
+            _descriptors.create((int)keypoints.size(), dsize, CV_8U);
+            Mat descriptors = _descriptors.getMat();
+            Mat descriptorsFloat = Mat((int)keypoints.size(), dsize, CV_32F);
+            calcDescriptors(gpyr, keypoints, descriptorsFloat, nOctaveLayers, firstOctave);
+            descriptorsFloat.assignTo(descriptors, CV_8U);
+        }
+        else
+        {
+            _descriptors.create((int)keypoints.size(), dsize, CV_32F);
+            Mat descriptors = _descriptors.getMat();
+            calcDescriptors(gpyr, keypoints, descriptors, nOctaveLayers, firstOctave);
+        }
         //t = (double)getTickCount() - t;
         //printf("descriptor extraction time: %g\n", t*1000./tf);
     }
