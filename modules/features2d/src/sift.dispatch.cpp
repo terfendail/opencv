@@ -363,12 +363,12 @@ void SIFT_Impl::findScaleSpaceExtrema( const std::vector<Mat>& gauss_pyr, const 
 static
 void calcSIFTDescriptor(
         const Mat& img, Point2f ptf, float ori, float scl,
-        int d, int n, float* dst
+        int d, int n, Mat& dst, int row
 )
 {
     CV_TRACE_FUNCTION();
 
-    CV_CPU_DISPATCH(calcSIFTDescriptor, (img, ptf, ori, scl, d, n, dst),
+    CV_CPU_DISPATCH(calcSIFTDescriptor, (img, ptf, ori, scl, d, n, dst, row),
         CV_CPU_DISPATCH_MODES_ALL);
 }
 
@@ -409,7 +409,7 @@ public:
             float angle = 360.f - kpt.angle;
             if(std::abs(angle - 360.f) < FLT_EPSILON)
                 angle = 0.f;
-            calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+            calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors, i);
         }
     }
 private:
@@ -538,19 +538,12 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
         //t = (double)getTickCount();
         int dsize = descriptorSize();
         if( useUcharDescriptors )
-        {
             _descriptors.create((int)keypoints.size(), dsize, CV_8U);
-            Mat descriptors = _descriptors.getMat();
-            Mat descriptorsFloat = Mat((int)keypoints.size(), dsize, CV_32F);
-            calcDescriptors(gpyr, keypoints, descriptorsFloat, nOctaveLayers, firstOctave);
-            descriptorsFloat.assignTo(descriptors, CV_8U);
-        }
         else
-        {
             _descriptors.create((int)keypoints.size(), dsize, CV_32F);
-            Mat descriptors = _descriptors.getMat();
-            calcDescriptors(gpyr, keypoints, descriptors, nOctaveLayers, firstOctave);
-        }
+
+        Mat descriptors = _descriptors.getMat();
+        calcDescriptors(gpyr, keypoints, descriptors, nOctaveLayers, firstOctave);
         //t = (double)getTickCount() - t;
         //printf("descriptor extraction time: %g\n", t*1000./tf);
     }
