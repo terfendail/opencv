@@ -131,6 +131,7 @@ TEST(Features2d_AFFINE_FEATURE, regression)
     {
         int nearestIdx = -1;
         float minDist = std::numeric_limits<float>::max();
+        float angleDistOfNearest = std::numeric_limits<float>::max();
 
         for( size_t c = 0; c < calcKeypoints.size(); c++ )
         {
@@ -141,6 +142,16 @@ TEST(Features2d_AFFINE_FEATURE, regression)
             {
                 minDist = curDist;
                 nearestIdx = (int)c;
+                angleDistOfNearest = abs( calcKeypoints[c].angle - validKeypoints[v].angle );
+            }
+            else if( curDist == minDist ) // the keypoints whose positions are same but angles are different
+            {
+                float angleDist = abs( calcKeypoints[c].angle - validKeypoints[v].angle );
+                if( angleDist < angleDistOfNearest )
+                {
+                    nearestIdx = (int)c;
+                    angleDistOfNearest = angleDist;
+                }
             }
         }
         if( nearestIdx == -1 || !isSimilarKeypoints( validKeypoints[v], calcKeypoints[nearestIdx] ) )
