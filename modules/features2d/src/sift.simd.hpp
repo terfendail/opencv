@@ -575,14 +575,18 @@ void calcSIFTDescriptor(
     int i, j, k, len = (radius*2+1)*(radius*2+1), histlen = (d+2)*(d+2)*(n+2);
     int rows = img.rows, cols = img.cols;
 
-    AutoBuffer<float> buf(len*6 + histlen);
-    float *X = buf.data(), *Y = X + len, *Mag = Y, *Ori = Mag + len, *W = Ori + len;
-    float *RBin = W + len, *CBin = RBin + len, *hist = CBin + len;
-
-    float* rawDst = 0;
     cv::utils::BufferArea area;
+    float *X = 0, *Y = 0, *Mag, *Ori = 0, *W = 0, *RBin = 0, *CBin = 0, *hist = 0, *rawDst = 0;
+    area.allocate(X, len, CV_SIMD_WIDTH);
+    area.allocate(Y, len, CV_SIMD_WIDTH);
+    area.allocate(Ori, len, CV_SIMD_WIDTH);
+    area.allocate(W, len, CV_SIMD_WIDTH);
+    area.allocate(RBin, len, CV_SIMD_WIDTH);
+    area.allocate(CBin, len, CV_SIMD_WIDTH);
+    area.allocate(hist, histlen, CV_SIMD_WIDTH);
     area.allocate(rawDst, len, CV_SIMD_WIDTH);
     area.commit();
+    Mag = Y;
 
     for( i = 0; i < d+2; i++ )
     {
@@ -633,10 +637,10 @@ void calcSIFTDescriptor(
         const v_int32 __n_plus_2 = vx_setall_s32(n+2);
         for( ; k <= len - vecsize; k += vecsize )
         {
-            v_float32 rbin = vx_load(RBin + k);
-            v_float32 cbin = vx_load(CBin + k);
-            v_float32 obin = (vx_load(Ori + k) - __ori) * __bins_per_rad;
-            v_float32 mag = vx_load(Mag + k) * vx_load(W + k);
+            v_float32 rbin = vx_load_aligned(RBin + k);
+            v_float32 cbin = vx_load_aligned(CBin + k);
+            v_float32 obin = (vx_load_aligned(Ori + k) - __ori) * __bins_per_rad;
+            v_float32 mag = vx_load_aligned(Mag + k) * vx_load_aligned(W + k);
 
             v_int32 r0 = v_floor(rbin);
             v_int32 c0 = v_floor(cbin);
@@ -835,14 +839,24 @@ else // CV_8U
     float nrm1 = 0;
     for( k = 0; k < len; k++ )
     {
-        dst[k] *= nrm2;
-        nrm1 += dst[k];
+        rawDst[k] *= nrm2;
+        nrm1 += rawDst[k];
     }
     nrm1 = 1.f/std::max(nrm1, FLT_EPSILON);
+if( dstMat.type() == CV_32F )
+{
     for( k = 0; k < len; k++ )
     {
-        dst[k] = std::sqrt(dst[k] * nrm1);//saturate_cast<uchar>(std::sqrt(dst[k] * nrm1)*SIFT_INT_DESCR_FCTR);
+        dst[k] = std::sqrt(rawDst[k] * nrm1);
     }
+}
+else // CV_8U
+{
+    for( k = 0; k < len; k++ )
+    {
+        dst[k] = saturate_cast<uchar>(std::sqrt(rawDst[k] * nrm1)*SIFT_INT_DESCR_FCTR);
+    }
+}
 #endif
 }
 
